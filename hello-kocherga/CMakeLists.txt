@@ -17,7 +17,6 @@ target_link_libraries(hello-kocherga
         hardware_sync
         hardware_watchdog
         can2040
-        libcanard
         kocherga
         o1heap
         )
