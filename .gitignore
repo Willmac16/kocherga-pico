@@ -1,0 +1,61 @@
+build
+
+### C++ template
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# User-specific stuff
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+.idea/**/discord.xml
+
+# CMake
+cmake-build-*/
+*.cmake
+Makefile
+CMakeFiles
+CMakeCache.txt
+
+# Editor-based Rest Client
+.idea/httpRequests
+
+# Apple desktop services
+.DS_Store
+
+# transpiled pio code
+*.pio.h
+
+# transpiled DSDL namespaces
+transpiled
+
+pico-sdk/src/rp2_common/cyw43_driver/pioasm/tmp/PioasmBuild-cfgcmd.txt
+pico-sdk/src/rp2_common/cyw43_driver/pioasm/src/PioasmBuild-stamp/PioasmBuild-source_dirinfo.txt

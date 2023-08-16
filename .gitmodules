@@ -1,0 +1,12 @@
+[submodule "sdk/pico-sdk"]
+	path = sdk/pico-sdk
+	url = https://github.com/raspberrypi/pico-sdk.git
+[submodule "lib/can2040"]
+	path = lib/can2040
+	url = https://github.com/KevinOConnor/can2040
+[submodule "lib/kocherga"]
+	path = lib/kocherga
+	url = git@github.com:Zubax/kocherga.git
+[submodule "lib/o1heap"]
+	path = lib/o1heap
+	url = https://github.com/pavel-kirienko/o1heap.git
