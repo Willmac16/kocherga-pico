@@ -27,9 +27,9 @@ __ARGS_OFFSET = 2k;
 MEMORY
 {
     FLASH(rx) : ORIGIN = 0x10000000, LENGTH = __APP_OFFSET
-    RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 256k
+    RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 256k - __ARGS_OFFSET
     SCRATCH_X(rwx) : ORIGIN = 0x20040000, LENGTH = 4k
-    SCRATCH_Y(rwx) : ORIGIN = 0x20041000, LENGTH = __ARGS_OFFSET
+    SCRATCH_Y(rwx) : ORIGIN = 0x20041000, LENGTH = 4k
 }
 
 ENTRY(_entry_point)
@@ -120,10 +120,7 @@ SECTIONS
     __binary_info_end = .;
     . = ALIGN(4);
 
-    /* End of .text-like segments */
-    __etext = .;
-
-   .ram_vector_table (COPY): {
+   .ram_vector_table (NOLOAD): {
         *(.ram_vector_table)
     } > RAM
 
@@ -176,8 +173,10 @@ SECTIONS
         /* All data end */
         __data_end__ = .;
     } > RAM AT> FLASH
+    /* __etext is (for backwards compatibility) the name of the .data init source pointer (...) */
+    __etext = LOADADDR(.data);
 
-    .uninitialized_data (COPY): {
+    .uninitialized_data (NOLOAD): {
         . = ALIGN(4);
         *(.uninitialized_data*)
     } > RAM
@@ -208,11 +207,11 @@ SECTIONS
         __bss_end__ = .;
     } > RAM
 
-    .heap (COPY):
+    .heap (NOLOAD):
     {
         __end__ = .;
         end = __end__;
-        *(.heap*)
+        KEEP(*(.heap*))
         __HeapLimit = .;
     } > RAM
 
@@ -225,17 +224,17 @@ SECTIONS
     /* by default we put core 0 stack at the end of scratch Y, so that if core 1
      * stack is not used then all of SCRATCH_X is free.
      */
-    .stack1_dummy (COPY):
+    .stack1_dummy (NOLOAD):
     {
         *(.stack1*)
     } > SCRATCH_X
-    .stack_dummy (COPY):
+    .stack_dummy (NOLOAD):
     {
-        *(.stack*)
+        KEEP(*(.stack*))
     } > SCRATCH_Y
 
     .flash_end : {
-        __flash_binary_end = .;
+        PROVIDE(__flash_binary_end = .);
     } > FLASH
 
     /* stack limit is poorly named, but historically is maximum heap ptr */

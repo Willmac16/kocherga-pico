@@ -26,8 +26,6 @@ extern "C" {
 #define APP_OFFSET 0x0004'0000U
 #define APP_BASE (XIP_BASE + APP_OFFSET)
 
-#define FLAG_VALUE 0xDEAD'BEEFU
-
 
 static O1HeapInstance* oh_one_heap;
 

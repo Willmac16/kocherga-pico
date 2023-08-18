@@ -30,6 +30,8 @@ string(ASCII 27 Esc)
 
 pico_add_extra_outputs(hello-kocherga)
 
-pico_set_binary_type(hello-kocherga copy_to_ram)
 target_link_directories(hello-kocherga PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# pico_set_linker_script(hello-kocherga ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_loader.ld)
+
+pico_set_binary_type(hello-kocherga copy_to_ram)
 pico_set_linker_script(hello-kocherga ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_loader_in_ram.ld)
