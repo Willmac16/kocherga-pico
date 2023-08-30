@@ -1,5 +1,5 @@
 set(KB_MAJ_REV 0)
-set(KB_MIN_REV 1)
+set(KB_MIN_REV 2)
 
 string(TIMESTAMP BUILD_DATE %s UTC)
 
@@ -15,14 +15,16 @@ add_executable(kocherga-blink
         )
 
 # pull in common dependencies
-target_link_libraries(kocherga-blink pico_stdlib)
+target_link_libraries(kocherga-blink
+        pico_stdlib
+        pico_multicore)
 
 pico_add_extra_outputs(kocherga-blink)
 
 target_link_directories(kocherga-blink PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-pico_set_linker_script(kocherga-blink ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_app.ld)
 
 target_compile_definitions(kocherga-blink PRIVATE SOFTWARE_VERSION_MAJOR=${KB_MAJ_REV} SOFTWARE_VERSION_MINOR=${KB_MIN_REV} TIMESTAMP_UTC=${BUILD_DATE} GIT_HASH=0x${GIT_HASH})
 
-find_package(kocherga REQUIRED)
-generate_kocherga_image(kocherga-blink.elf kocherga-blink)
+# pico_set_linker_script(kocherga-blink ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_app.ld)
+# find_package(kocherga REQUIRED)
+# generate_kocherga_image(kocherga-blink.elf kocherga-blink)

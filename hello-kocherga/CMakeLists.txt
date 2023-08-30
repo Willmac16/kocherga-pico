@@ -4,6 +4,7 @@ set(SC_VERSION_PATCH 0)
 
 add_executable(hello-kocherga
         hello-kocherga.cpp
+        lkb.s
         )
 
 target_include_directories(hello-kocherga PRIVATE ${CMAKE_CURRENT_LIST_DIR}/inc)
@@ -28,10 +29,9 @@ set(SC_VERSION ${SC_VERSION_MAJOR}.${SC_VERSION_MINOR}.${SC_VERSION_PATCH})
 string(TIMESTAMP BUILD_DATE "%m-%d-%Y, %H:%M" UTC )
 string(ASCII 27 Esc)
 
-pico_add_extra_outputs(hello-kocherga)
-
 target_link_directories(hello-kocherga PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-# pico_set_linker_script(hello-kocherga ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_loader.ld)
 
 pico_set_binary_type(hello-kocherga copy_to_ram)
 pico_set_linker_script(hello-kocherga ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_loader_in_ram.ld)
+
+pico_add_extra_outputs(hello-kocherga)

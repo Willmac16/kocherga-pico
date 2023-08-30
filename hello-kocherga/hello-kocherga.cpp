@@ -1,9 +1,10 @@
+#include "hello-kocherga.hpp"
+
 #include "RP2040.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-// #include <string.h>
 
 #include "hardware/flash.h"
 #include "hardware/irq.h"
@@ -19,17 +20,16 @@
 #include <kocherga_can.hpp>
 #include <o1heap.h>
 
+
 extern "C" {
+    #include "lkb.h"
     #include <can2040.h>
 }
-
-#define APP_OFFSET 0x0004'0000U
-#define APP_BASE (XIP_BASE + APP_OFFSET)
 
 
 static O1HeapInstance* oh_one_heap;
 
-static uint8_t* raw_heap[2U * 1024U * sizeof(void*) * 4U] __attribute__((aligned(32U)));
+static uint8_t raw_heap[2U * 1024U * sizeof(void*) * 4U] __attribute__((used, section(".o1heap")));
 
 void o1heapSetup() {
     assert(raw_heap != NULL);
@@ -55,40 +55,90 @@ auto kocherga::getRandomByte() -> std::uint8_t
 
 class PicoFlashBackend final : public kocherga::IROMBackend
 {
-    // void beginWrite() override
-    // {
-
-    // }
-
     // So this is a stupid way to do it, but its single erase, multi write flash backend
+
     auto write(const std::size_t offset, const std::byte* const data, const std::size_t size) -> std::optional<std::size_t> override
     {
         uint32_t intStatus = save_and_disable_interrupts();
 
+        // Starting address of the last sector this write will touch
         const uint32_t finalWriteSector = (APP_OFFSET + offset + size - 1) & ~(FLASH_SECTOR_SIZE - 1);
 
+        // Erase all yet to be erased sectors that this write needs
         if (finalWriteSector > last_erased_sector) {
-            flash_range_erase(last_erased_sector + FLASH_SECTOR_SIZE, last_erased_sector - finalWriteSector);
+            flash_range_erase(last_erased_sector + FLASH_SECTOR_SIZE, finalWriteSector - last_erased_sector);
+
+            uint8_t erased = 0xFF;
+
+            for (uint32_t i = last_erased_sector + FLASH_SECTOR_SIZE; i < finalWriteSector; i++)
+            {
+                const uint8_t * const xip_pointer = (uint8_t *) (XIP_NOCACHE_NOALLOC_BASE + i);
+
+                // Check that we erased the sector
+                erased &= * xip_pointer;
+            }
+
+            assert(erased == 0xFF);
+
             last_erased_sector = finalWriteSector;
         }
 
+
+        // Write the data one page at a time
         for (uint32_t off = offset; off < offset + size; off += FLASH_PAGE_SIZE)
         {
-            const uint32_t startOfWriteAddr = (APP_OFFSET + off);
-            const uint32_t startOfWritePage = startOfWriteAddr & ~(FLASH_PAGE_SIZE - 1);
-            uint32_t endOfWriteAddr = startOfWriteAddr + size - 1;
+            const uint32_t startOfWriteOffset = (APP_OFFSET + off);
+            const uint32_t startOfWritePage = startOfWriteOffset & ~(FLASH_PAGE_SIZE - 1);
 
-            if (endOfWriteAddr > startOfWritePage + FLASH_PAGE_SIZE - 1)
+            assert(startOfWriteOffset >= startOfWritePage);
+
+            // Clamp the memory we are writing to page boundaries
+            uint32_t endOfWriteOffset = startOfWriteOffset + size; // (exclusive of last byte)
+            if (endOfWriteOffset > startOfWritePage + FLASH_PAGE_SIZE)
             {
-                endOfWriteAddr = startOfWritePage + FLASH_PAGE_SIZE - 1;
+                endOfWriteOffset = startOfWritePage + FLASH_PAGE_SIZE;
             }
 
             uint8_t pageBuffer[FLASH_PAGE_SIZE];
 
-            memset(pageBuffer, 0xFF, sizeof(pageBuffer));
-            memcpy(pageBuffer + (startOfWriteAddr - startOfWritePage), data, endOfWriteAddr - startOfWriteAddr + 1);
+            // "Erase" the contents of the page buffer so we don't touch the rest of the flash
+            memset(pageBuffer, 0xFF, FLASH_PAGE_SIZE);
 
-            flash_range_program(startOfWriteAddr, (uint8_t *) pageBuffer, FLASH_PAGE_SIZE);
+            assert(startOfWriteOffset - startOfWritePage < FLASH_PAGE_SIZE);
+
+            assert(endOfWriteOffset - startOfWritePage <= FLASH_PAGE_SIZE);
+
+            // Copy the page from data buffer into the page buffer
+            memcpy(pageBuffer + (startOfWriteOffset - startOfWritePage), data + off - offset, endOfWriteOffset - startOfWriteOffset);
+
+            bool matches = true;
+
+            // Check that we copied what we wanted to
+            for (uint32_t o = startOfWriteOffset; o < endOfWriteOffset && matches; o++)
+            {
+                const uint8_t * const buffer_pointer = (uint8_t *) pageBuffer + (o - startOfWritePage);
+                const uint8_t * const data_pointer = (uint8_t *) data + o - startOfWriteOffset + off - offset;
+
+                // Matches only stays true if the data we wrote matches the data we wanted to write
+                matches &= (* buffer_pointer == * data_pointer);
+            }
+
+            assert(matches);
+
+            // Write the page buffer to flash
+            flash_range_program(startOfWritePage, (uint8_t *) pageBuffer, FLASH_PAGE_SIZE);
+
+            // Check that we wrote what we wanted to
+            for (uint32_t i = startOfWriteOffset; i < endOfWriteOffset && matches; i++)
+            {
+                const uint8_t * const xip_pointer = (uint8_t *) (XIP_NOCACHE_NOALLOC_BASE + i);
+                const uint8_t * const data_pointer = (uint8_t *) (data + i - startOfWriteOffset + off - offset);
+
+                // Matches only stays true if the data we wrote matches the data we wanted to write
+                matches &= (* xip_pointer == * data_pointer);
+            }
+
+            assert(matches);
         }
 
         // TODO: check if write was successful--could just be checksum in sw, ideally like a DMA to interp checksum
@@ -104,7 +154,10 @@ class PicoFlashBackend final : public kocherga::IROMBackend
 
     auto read(const std::size_t offset, std::byte* const out_data, const std::size_t size) const -> std::size_t override
     {
-        memcpy(out_data, (const void*) (APP_BASE + offset), size);
+        // Bypass XIP Caching to ensure the app image isn't invalid at app launch
+        void * const src_addr = (void * const) (XIP_NOCACHE_NOALLOC_BASE + APP_OFFSET + offset);
+
+        memcpy(out_data, src_addr, size);
         return size;
     }
 
@@ -119,7 +172,7 @@ struct can2040mailbox {
     struct can2040_msg msg;
 };
 
-volatile struct can2040mailbox mailbox[32];
+volatile struct can2040mailbox mailbox[CAN_MAILBOX_SIZE];
 
 static volatile kocherga::can::ICANDriver::Bitrate bitrateArg;
 
@@ -127,18 +180,23 @@ static volatile kocherga::can::ICANDriver::Bitrate bitrateArg;
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
     if (notify == CAN2040_NOTIFY_RX) {
+        static uint8_t mailbox_index = 0;
+
+        const uint8_t num_mailboxes = sizeof(mailbox) / sizeof(struct can2040mailbox);
+
         // Try to find a mailbox to put the msg in
-        for (uint8_t i = 0; i < sizeof(mailbox) / sizeof(struct can2040mailbox); i++) {
+        for (mailbox_index = mailbox_index % num_mailboxes; mailbox_index < num_mailboxes; mailbox_index++) {
             // If mailbox is empty or marked read then use it (isn't unread)
-            if ((mailbox[i].flags & 0x03) != 0x01) {
+            if ((mailbox[mailbox_index].flags & 0x03) != 0x01) {
                 // Yes I know I am casting away volatile
                 // The agreement that both the mailperson and mailbox owner have is such that
                 // the mailperson will only write to the mailbox if it is marked read or empty
                 // and the mailbox owner will only read from the mailbox if it is marked written.
                 // This flip flop flag system keeps only one of the two writing to the mailbox at a time.
-                can2040_msg *const m = (can2040_msg *const) &mailbox[i].msg;
+                can2040_msg * const m = (can2040_msg * const) &mailbox[mailbox_index].msg;
                 memcpy(m, msg, sizeof(struct can2040_msg));
-                mailbox[i].flags = 0x01;
+                mailbox[mailbox_index].flags = 0x01;
+
                 return;
             }
         }
@@ -177,13 +235,6 @@ can2040Init(void)
 void multicore_can2040Init(void) {
     can2040Init();
 
-    spin_locks_reset();
-
-    // Confirm startup through fifo flag exchange
-    // multicore_fifo_push_blocking(FLAG_VALUE);
-    // const uint32_t g = multicore_fifo_pop_blocking();
-    // assert(g == ~FLAG_VALUE);
-
     // Keep this core "busy" so it doesnt try to execute random memory
     while (1) {
         tight_loop_contents();
@@ -196,11 +247,18 @@ class Can2040Driver final : public kocherga::can::ICANDriver
                    const bool                                      silent,
                    const kocherga::can::CANAcceptanceFilterConfig& filter) -> std::optional<Mode> override
     {
+        // __breakpoint();
         bitrateArg.arbitration = bitrate.arbitration;
 
         tx_queue_.clear();
         multicore_reset_core1();
-        multicore_launch_core1(multicore_can2040Init);
+
+        extern uint32_t __StackOneBottom;
+        uint32_t *stack_bottom = (uint32_t *) &__StackOneBottom;
+        multicore_launch_core1_with_stack(multicore_can2040Init, stack_bottom, PICO_CORE1_STACK_SIZE);
+
+        // multicore_launch_core1(multicore_can2040Init);
+        // __breakpoint();
 
         // Confirm can core startup through flag exchange
         // const uint32_t g = multicore_fifo_pop_blocking();
@@ -250,15 +308,18 @@ class Can2040Driver final : public kocherga::can::ICANDriver
 
     auto unloadCanMailbox(void* const payload) -> std::optional<std::pair<std::uint32_t, std::uint8_t>>
     {
-        for (uint8_t i = 0; i < sizeof(mailbox) / sizeof(can2040mailbox); i++) {
+        static uint8_t mailbox_index = 0;
+        const uint8_t num_mailboxes = sizeof(mailbox) / sizeof(struct can2040mailbox);
+
+        for (mailbox_index = mailbox_index % num_mailboxes; mailbox_index < num_mailboxes; mailbox_index++) {
             // If mailbox is full and unread read it and mark as read
-            if ((mailbox[i].flags ^ 0x02) == 0x03) {
-                const can2040_msg *const m = (can2040_msg *const) &mailbox[i].msg;
+            if ((mailbox[mailbox_index].flags ^ 0x02) == 0x03) {
+                const can2040_msg *const m = (can2040_msg *const) &mailbox[mailbox_index].msg;
                 uint8_t len = DLCToLength[m->dlc];
                 memcpy(payload, m->data, len);
                 auto result = std::make_pair(m->id, len);
 
-                mailbox[i].flags |= 0x02;
+                mailbox[mailbox_index].flags |= 0x02;
 
                 return result;
             }
@@ -289,8 +350,8 @@ struct kocherga::SystemInfo picoBoardSysInfo()
 {
     struct kocherga::SystemInfo sysInf = {
         .hardware_version = {0, 1},
-        .unique_id = {1, 2, 3, 4, 5, 6, 7, 8},
-        .node_name = "PicoTestBoard"
+        .unique_id = {2, 2, 2, 2, 2, 2, 2, 2},
+        .node_name = "org.cwrubaja.pico.testboard"
     };
 
     return sysInf;
@@ -341,6 +402,7 @@ static_assert(std::is_trivial_v<ArgumentsFromApplication>);
 
 void picoRestart()
 {
+    __breakpoint();
     // Reset the watchdog timer
     watchdog_enable(1, 1);
     while(1) {
@@ -348,20 +410,32 @@ void picoRestart()
     }
 }
 
+void app_start(void) {
+    multicore_reset_core1();
+    save_and_disable_interrupts();
+
+    __breakpoint();
+    launch_kocherga_bin();
+
+    // void (*launch_app)(void) = (void (*)(void)) (XIP_BASE + APP_OFFSET + 64U);
+    // launch_app();
+}
+
 int main()
 {
+    // * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U;
     o1heapSetup();
 
     // Check if the application has passed any arguments to the bootloader via shared RAM.
     // The address where the arguments are stored obviously has to be shared with the application.
     // If the application uses heap, then it might be a good idea to alias this area with the heap.
-    std::optional<ArgumentsFromApplication> args =
-        kocherga::VolatileStorage<ArgumentsFromApplication>(reinterpret_cast<std::uint8_t*>(0x2004'1800U)).take();
+    // std::optional<ArgumentsFromApplication> args =
+    //     kocherga::VolatileStorage<ArgumentsFromApplication>(reinterpret_cast<std::uint8_t*>(0x2004'1800U)).take();
 
     // Initialize the bootloader core.
     PicoFlashBackend rom_backend;
     kocherga::SystemInfo system_info = picoBoardSysInfo();
-    kocherga::Bootloader::Params params{.max_app_size = 0x0001'0000U, .linger = args.has_value()};  // Read the docs on the available params.
+    kocherga::Bootloader::Params params{.max_app_size = 0x0001'0000U};  // Read the docs on the available params.
     kocherga::Bootloader boot(rom_backend, system_info, params);
     // It's a good idea to check if the app is valid and safe to boot before adding the nodes.
     // This way you can skip the potentially slow or disturbing interface initialization on the happy path.
@@ -385,10 +459,10 @@ int main()
     cyphal_can_not_dronecan = 1;
     // cyphal_can_node_id = 111;
 
-    if (args)
-    {
-        cyphal_can_node_id = args->cyphal_can_node_id;          // Will be ignored if invalid.
-    }
+    // if (args)
+    // {
+    //     cyphal_can_node_id = args->cyphal_can_node_id;          // Will be ignored if invalid.
+    // }
     Can2040Driver can_driver;
     kocherga::can::CANNode can_node(can_driver,
                                     system_info.unique_id,
@@ -396,36 +470,42 @@ int main()
                                     cyphal_can_not_dronecan,
                                     cyphal_can_node_id);
 
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+
+
     spin_locks_reset();
 
     if (boot.addNode(&can_node)) {
-
         while (true)
         {
             const uint_fast64_t uptime = time_us_64();
             if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
             {
+
                 if (*fin == kocherga::Final::BootApp)
                 {
-                    void (*app_start)(void) = (void (*)(void)) (APP_BASE + 64U);
                     app_start();
                 }
-                if (*fin == kocherga::Final::Restart)
+                else if (*fin == kocherga::Final::Restart)
                 {
                     picoRestart();
                 }
+                // Restart or boot returned. This is bad
                 assert(false);
             }
-            // Trigger the update process internally if the required arguments are provided by the application.
-            // The trigger method cannot be called before the first poll().
-            if (args && (args->trigger_node_index < 2))
-            {
-                (void) boot.trigger(args->trigger_node_index,                   // Use serial or CAN?
-                                    args->file_server_node_id,                  // Which node to download the file from?
-                                    std::strlen((const char*) args->remote_file_path.data()), // Remote file path length.
-                                    args->remote_file_path.data());
-                args.reset();
-            }
+            // // Trigger the update process internally if the required arguments are provided by the application.
+            // // The trigger method cannot be called before the first poll().
+            // if (args && (args->trigger_node_index < 2))
+            // {
+            //     (void) boot.trigger(args->trigger_node_index,                   // Use serial or CAN?
+            //                         args->file_server_node_id,                  // Which node to download the file from?
+            //                         std::strlen((const char*) args->remote_file_path.data()), // Remote file path length.
+            //                         args->remote_file_path.data());
+            //     args.reset();
+            // }
+
+            gpio_put(PICO_DEFAULT_LED_PIN, uptime & (1U << 20U));
             // Sleep until the next hardware event (like reception of CAN frame or UART byte) but no longer than
             // 1 second. A fixed sleep is also acceptable but the resulting polling interval should be adequate
             // to avoid data loss (about 100 microseconds is usually ok).

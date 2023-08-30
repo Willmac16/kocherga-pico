@@ -42,10 +42,6 @@ struct AppDescriptor
 
 static const volatile AppDescriptor g_app_descriptor __attribute__((used, section(".app_descriptor")));
 
-// Optionally, use explicit placement near the beginning of the binary:
-//      __attribute__((used, section(".app_descriptor")));
-// and define the .app_descriptor section in the linker file.
-
 int main() {
 #ifndef PICO_DEFAULT_LED_PIN
 #warning blink example requires a board with a regular LED
@@ -53,6 +49,7 @@ int main() {
     const uint LED_PIN = PICO_DEFAULT_LED_PIN;
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
+
     while (true) {
         gpio_put(LED_PIN, 1);
         sleep_ms(250);
