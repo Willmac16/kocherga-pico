@@ -43,5 +43,5 @@ add_dependencies(auto-loader-c2r auto-loader-offset)
 
 add_custom_command(TARGET auto-loader-c2r
         POST_BUILD
-        COMMAND zsh ${PROJECT_SOURCE_DIR}/elf_adder.sh auto-loader-c2r.elf auto-loader-offset.elf
+        COMMAND ${PROJECT_SOURCE_DIR}/elf_adder.sh auto-loader-c2r.elf auto-loader-offset.elf
         )

@@ -21,8 +21,8 @@ while read p; do
   line=$(arm-none-eabi-objdump -h $2 | sed -n $line_num'p')
 
   name=$(echo "$line" | awk '{print $2}')
-  LMA=$(echo "$line" | awk '{print $5}')
-  decimal_addr=$(echo "obase=10; ibase=16; ${LMA:u}" | bc)
+  LMA=$(echo "$line" | awk '{print $5}' | tr "[:lower:]" "[:upper:]")
+  decimal_addr=$(echo "obase=10; ibase=16; $LMA" | bc)
 
   dup_name=$name"_two"
   rm temp.bin
