@@ -416,9 +416,6 @@ void app_start(void) {
 
     __breakpoint();
     launch_kocherga_bin();
-
-    // void (*launch_app)(void) = (void (*)(void)) (XIP_BASE + APP_OFFSET + 64U);
-    // launch_app();
 }
 
 int main()

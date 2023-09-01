@@ -31,4 +31,5 @@ add_subdirectory(lib)
 # Targets
 add_subdirectory(hello-kocherga)
 add_subdirectory(kocherga-blink)
+add_subdirectory(auto-loader)
 
