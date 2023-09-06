@@ -2,7 +2,7 @@
 .cpu cortex-m0plus
 .thumb
 
-#include "auto-loader.hpp"
+#include "hello-kocherga.hpp"
 #include "pico/asm_helper.S"
 #include "hardware/regs/m0plus.h"
 
@@ -15,9 +15,9 @@
 
 .equ APP_BASE, XIP_BASE + APP_OFFSET
 
-.global auto_launch
+.global launch_kocherga_bin
 .thumb_func
-auto_launch:
+launch_kocherga_bin:
     push {r0-r7, lr} // Save the regs from C into the stack
 
     ldr r0, =(APP_BASE + 0x100) // place the addr to the vectors section of the binary into reg naught

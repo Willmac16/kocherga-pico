@@ -38,6 +38,8 @@ struct AppDescriptor
         static constexpr std::uint8_t ReleaseBuild = 1U;
         static constexpr std::uint8_t DirtyBuild   = 2U;
     };
+
+    [[maybe_unused]] std::array<std::byte, 192>  _reserved_d{}; // 192 Bytes reserved to maintain the 256 byte alignment the Vector Table usually gets
 };
 
 static const volatile AppDescriptor g_app_descriptor __attribute__((used, section(".app_descriptor")));
@@ -52,9 +54,9 @@ int main() {
 
     while (true) {
         gpio_put(LED_PIN, 1);
-        sleep_ms(250);
+        busy_wait_ms(50);
         gpio_put(LED_PIN, 0);
-        sleep_ms(250);
+        busy_wait_ms(50);
     }
 #endif
 }

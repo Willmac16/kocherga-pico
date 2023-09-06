@@ -4,7 +4,7 @@ set(SC_VERSION_PATCH 0)
 
 add_executable(hello-kocherga
         hello-kocherga.cpp
-        lkb.s
+        launch_kocherga_bin.S
         )
 
 target_include_directories(hello-kocherga PRIVATE ${CMAKE_CURRENT_LIST_DIR}/inc)
@@ -35,3 +35,11 @@ pico_set_binary_type(hello-kocherga copy_to_ram)
 pico_set_linker_script(hello-kocherga ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherga_loader_in_ram.ld)
 
 pico_add_extra_outputs(hello-kocherga)
+
+# Hello Kocherga Depends on the Demo Kocherga Blink elf
+add_dependencies(hello-kocherga kocherga-blink)
+
+add_custom_command(TARGET hello-kocherga
+        POST_BUILD
+        COMMAND ${PROJECT_SOURCE_DIR}/elf_adder.sh hello-kocherga.elf ../kocherga-blink/kocherga-blink.elf
+        )

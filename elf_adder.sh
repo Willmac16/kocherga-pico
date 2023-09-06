@@ -26,7 +26,7 @@ while read p; do
 
   dup_name=$name"_two"
   rm temp.bin
-  arm-none-eabi-objcopy -O binary --only-section=$name auto-loader-offset.elf temp.bin
+  arm-none-eabi-objcopy -O binary --only-section=$name $2 temp.bin
   arm-none-eabi-objcopy --add-section $dup_name=temp.bin out.elf
 
   arm-none-eabi-objcopy --change-section-address $dup_name=$decimal_addr out.elf 

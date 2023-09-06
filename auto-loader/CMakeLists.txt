@@ -2,7 +2,7 @@
 
 add_executable(auto-loader-offset
         auto-loader.cpp
-        lkb-c2r.s
+        lkb-c2r.S
         )
 
 # pull in common dependencies
@@ -21,7 +21,7 @@ pico_set_linker_script(auto-loader-offset ${CMAKE_CURRENT_SOURCE_DIR}/memmap_off
 # Copy to Ram elf
 add_executable(auto-loader-c2r
         auto-loader.cpp
-        lkb-off.s # Include the opposite binary launcher to switch over to the offset XIP Version
+        lkb-off.S # Include the opposite binary launcher to switch over to the offset XIP Version
         )
 
 # pull in common dependencies

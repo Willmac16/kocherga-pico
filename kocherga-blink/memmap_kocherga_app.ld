@@ -50,8 +50,8 @@ SECTIONS
         __app_desc_end__ = .;
     } > FLASH
 
-    ASSERT(__app_desc_end__ - __app_desc_start__ == 64,
-        "ERROR: App Descriptor must be 64 bytes in size")
+    ASSERT(__app_desc_end__ - __app_desc_start__ == 256,
+        "ERROR: App Descriptor must be 256 bytes in size. Add Padding if neccesary")
 
     /* The second stage will always enter the image at the start of .text.
        The debugger will use the ELF entry point, which is the _entry_point
@@ -60,7 +60,7 @@ SECTIONS
        launches only, to perform proper flash setup.
     */
 
-    .text : {
+    .text : ALIGN(256) {
         __logical_binary_start = .;
         KEEP (*(.vectors))
         KEEP (*(.binary_info_header))

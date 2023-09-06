@@ -141,21 +141,21 @@ class PicoFlashBackend final : public kocherga::IROMBackend
             assert(matches);
         }
 
+        restore_interrupts(intStatus);
+
         // TODO: check if write was successful--could just be checksum in sw, ideally like a DMA to interp checksum
         if (true)
         {
-            restore_interrupts(intStatus);
             return size;
         }
 
-        restore_interrupts(intStatus);
         return {};
     }
 
     auto read(const std::size_t offset, std::byte* const out_data, const std::size_t size) const -> std::size_t override
     {
         // Bypass XIP Caching to ensure the app image isn't invalid at app launch
-        void * const src_addr = (void * const) (XIP_NOCACHE_NOALLOC_BASE + APP_OFFSET + offset);
+         void * const src_addr = (void * const) (XIP_NOCACHE_NOALLOC_BASE + APP_OFFSET + offset);
 
         memcpy(out_data, src_addr, size);
         return size;
@@ -411,10 +411,11 @@ void picoRestart()
 }
 
 void app_start(void) {
-    multicore_reset_core1();
+    // Wipe out anything the loader may accidentally be leaving behind for the app
     save_and_disable_interrupts();
+    multicore_reset_core1();
+    spin_locks_reset();
 
-    __breakpoint();
     launch_kocherga_bin();
 }
 
@@ -422,6 +423,9 @@ int main()
 {
     // * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U;
     o1heapSetup();
+
+    //__breakpoint();
+
 
     // Check if the application has passed any arguments to the bootloader via shared RAM.
     // The address where the arguments are stored obviously has to be shared with the application.
@@ -445,7 +449,7 @@ int main()
     // {
     //     serial_node.setLocalNodeID(args->cyphal_serial_node_id);
     // }
-    // boot.addNode(&serial_node);
+    // boot.addNode(&serial_nod:e);
 
     // Add a Cyphal/CAN node to the bootloader instance.
     std::optional<kocherga::can::ICANDriver::Bitrate> can_bitrate;

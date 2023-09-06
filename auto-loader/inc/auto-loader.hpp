@@ -1,0 +1,1 @@
+#define APP_OFFSET _u(0x00040000)

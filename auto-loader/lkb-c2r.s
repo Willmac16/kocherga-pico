@@ -2,10 +2,15 @@
 .cpu cortex-m0plus
 .thumb
 
+#include "auto-loader.hpp"
+#include "pico/asm_helper.S"
+#include "hardware/regs/m0plus.h"
+
 .text
 
 /*
-    This Launches the copy to ram version of autoloader
+    This is a modified version of exit_from_boot2
+    that Launches the copy to ram version of autoloader
 */
 
 .global auto_launch
@@ -13,9 +18,10 @@
 auto_launch:
     push {r0-r7, lr} // Save the regs from C into the stack
 
-    ldr r0, =(0x10000000 + 0x100) // place the addr to the beginning of the binary into r naught
-    ldr r1, =(0xE0000000 + 0x0000ed08) // load the addr of the vtor into reg one
-    str r0, [r1] // store the contents of 0x100 into the vector table in ram
+    ldr r0, =(XIP_BASE + 0x100) // place the addr to the vectors section of the binary into reg naught
+    ldr r1, =(PPB_BASE + M0PLUS_VTOR_OFFSET) // place the addr of the vtor into reg one
+    str r0, [r1] // Set the VTOR to the vectors section
+
 
     ldmia r0, {r0, r1} // load into reg naught and one from addr in reg naught
     msr msp, r0 // load reg naught into stack pointer
