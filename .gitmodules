@@ -10,3 +10,6 @@
 [submodule "lib/o1heap"]
 	path = lib/o1heap
 	url = https://github.com/pavel-kirienko/o1heap.git
+[submodule "lib/107-Arduino-Cyphal"]
+	path = lib/107-Arduino-Cyphal
+	url = git@github.com:107-systems/107-Arduino-Cyphal.git

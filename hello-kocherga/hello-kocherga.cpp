@@ -10,6 +10,8 @@
 #include "hardware/irq.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
+#include "hardware/structs/xip_ctrl.h"
+#include "hardware/resets.h"
 
 #include "pico/platform.h"
 #include "pico/rand.h"
@@ -20,12 +22,12 @@
 #include <kocherga_can.hpp>
 #include <o1heap.h>
 
-
 extern "C" {
     #include "lkb.h"
     #include <can2040.h>
 }
 
+static const uint32_t gpio_rx = 4, gpio_tx = 5;
 
 static O1HeapInstance* oh_one_heap;
 
@@ -57,6 +59,11 @@ class PicoFlashBackend final : public kocherga::IROMBackend
 {
     // So this is a stupid way to do it, but its single erase, multi write flash backend
 
+    void beginWrite() override {
+        // Tell the write function that it needs to erase anything it tries to write to
+        last_erased_sector = APP_OFFSET - FLASH_SECTOR_SIZE;
+    }
+
     auto write(const std::size_t offset, const std::byte* const data, const std::size_t size) -> std::optional<std::size_t> override
     {
         uint32_t intStatus = save_and_disable_interrupts();
@@ -67,6 +74,7 @@ class PicoFlashBackend final : public kocherga::IROMBackend
         // Erase all yet to be erased sectors that this write needs
         if (finalWriteSector > last_erased_sector) {
             flash_range_erase(last_erased_sector + FLASH_SECTOR_SIZE, finalWriteSector - last_erased_sector);
+
 
             uint8_t erased = 0xFF;
 
@@ -123,12 +131,16 @@ class PicoFlashBackend final : public kocherga::IROMBackend
                 matches &= (* buffer_pointer == * data_pointer);
             }
 
-            assert(matches);
+            if (!matches) {
+                restore_interrupts(intStatus);
+                return {};
+            }
 
             // Write the page buffer to flash
             flash_range_program(startOfWritePage, (uint8_t *) pageBuffer, FLASH_PAGE_SIZE);
 
             // Check that we wrote what we wanted to
+            // This also seeds the cache with the new contents of the flash
             for (uint32_t i = startOfWriteOffset; i < endOfWriteOffset && matches; i++)
             {
                 const uint8_t * const xip_pointer = (uint8_t *) (XIP_NOCACHE_NOALLOC_BASE + i);
@@ -138,30 +150,28 @@ class PicoFlashBackend final : public kocherga::IROMBackend
                 matches &= (* xip_pointer == * data_pointer);
             }
 
-            assert(matches);
+            if (!matches) {
+                restore_interrupts(intStatus);
+                return {};
+            }
         }
+
 
         restore_interrupts(intStatus);
-
-        // TODO: check if write was successful--could just be checksum in sw, ideally like a DMA to interp checksum
-        if (true)
-        {
-            return size;
-        }
-
-        return {};
+        return size;
     }
 
     auto read(const std::size_t offset, std::byte* const out_data, const std::size_t size) const -> std::size_t override
     {
-        // Bypass XIP Caching to ensure the app image isn't invalid at app launch
-         void * const src_addr = (void * const) (XIP_NOCACHE_NOALLOC_BASE + APP_OFFSET + offset);
+        // Bypass XIP Caching Checking to ensure the app image isn't invalid at app launch
+        // This forces a cache refresh of this access
+        void * const src_addr = (void * const) (XIP_NOCACHE_BASE + APP_OFFSET + offset);
 
         memcpy(out_data, src_addr, size);
         return size;
     }
 
-    uint32_t last_erased_sector = APP_OFFSET - FLASH_SECTOR_SIZE;
+    uint32_t last_erased_sector;
 };
 
 
@@ -180,7 +190,7 @@ static volatile kocherga::can::ICANDriver::Bitrate bitrateArg;
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
     if (notify == CAN2040_NOTIFY_RX) {
-        static uint8_t mailbox_index = 0;
+        uint8_t mailbox_index = 0;
 
         const uint8_t num_mailboxes = sizeof(mailbox) / sizeof(struct can2040mailbox);
 
@@ -217,7 +227,6 @@ can2040Init(void)
 {
     uint32_t pio_num = 1;
     uint32_t sys_clock = 125000000, bitrate = (uint32_t) bitrateArg.arbitration;
-    uint32_t gpio_rx = 4, gpio_tx = 5;
 
     can2040_setup(&cbus, pio_num);
     can2040_callback_config(&cbus, can2040_cb);
@@ -230,6 +239,23 @@ can2040Init(void)
 
     // Start canbus
     can2040_start(&cbus, sys_clock, bitrate, gpio_rx, gpio_tx);
+}
+
+void multicore_can2040Stop(void) {
+    // Pullup and take back from PIO both rx and tx pins
+    gpio_init(gpio_rx);
+    gpio_init(gpio_tx);
+
+    can2040_stop(&cbus);
+
+    // Reset PIO
+    constexpr uint32_t reset_bits = RESETS_RESET_PIO0_BITS | RESETS_RESET_PIO1_BITS | RESETS_RESET_IO_BANK0_BITS;
+    reset_block(reset_bits);
+    unreset_block_wait(reset_bits);
+
+    while(1) {
+        tight_loop_contents(); // Literally a no-op, but the one the SDK uses
+    }
 }
 
 void multicore_can2040Init(void) {
@@ -247,7 +273,6 @@ class Can2040Driver final : public kocherga::can::ICANDriver
                    const bool                                      silent,
                    const kocherga::can::CANAcceptanceFilterConfig& filter) -> std::optional<Mode> override
     {
-        // __breakpoint();
         bitrateArg.arbitration = bitrate.arbitration;
 
         tx_queue_.clear();
@@ -256,14 +281,6 @@ class Can2040Driver final : public kocherga::can::ICANDriver
         extern uint32_t __StackOneBottom;
         uint32_t *stack_bottom = (uint32_t *) &__StackOneBottom;
         multicore_launch_core1_with_stack(multicore_can2040Init, stack_bottom, PICO_CORE1_STACK_SIZE);
-
-        // multicore_launch_core1(multicore_can2040Init);
-        // __breakpoint();
-
-        // Confirm can core startup through flag exchange
-        // const uint32_t g = multicore_fifo_pop_blocking();
-        // assert(g == FLAG_VALUE);
-        // multicore_fifo_push_blocking(~FLAG_VALUE);
 
         return Mode::Classic;
     }
@@ -376,7 +393,6 @@ struct kocherga::SystemInfo picoBoardSysInfo()
 struct ArgumentsFromApplication
 {
     std::uint32_t                           cyphal_can_bitrate_primary;
-    std::uint32_t                           cyphal_can_bitrate_flexible;
     std::uint8_t                            cyphal_can_not_dronecan;    ///< 0xFF-unknown; 0-DroneCAN; 1-Cyphal/CAN.
     std::uint8_t                            cyphal_can_node_id;         ///< Invalid if unknown.
 
@@ -387,24 +403,13 @@ struct ArgumentsFromApplication
     ArgumentsFromApplication() = default;
 };
 
-// static assert trivially copyable for each field of ArgumentsFromApplication
-static_assert(std::is_trivially_copyable<std::uint8_t>::value);
-static_assert(std::is_trivially_copyable<std::uint16_t>::value);
-static_assert(std::is_trivially_copyable<std::uint32_t>::value);
-static_assert(std::is_trivially_copyable<std::array<std::uint8_t, 256>>::value);
-
-
-
-static_assert(std::is_trivially_copyable<ArgumentsFromApplication>::value);
-static_assert(std::is_trivially_default_constructible<ArgumentsFromApplication>::value);
 static_assert(std::is_trivial_v<ArgumentsFromApplication>);
 
 
 void picoRestart()
 {
-    __breakpoint();
     // Reset the watchdog timer
-    watchdog_enable(1, 1);
+    watchdog_enable(1, 0);
     while(1) {
         tight_loop_contents(); // Literally a no-op, but the one the SDK uses
     }
@@ -412,35 +417,54 @@ void picoRestart()
 
 void app_start(void) {
     // Wipe out anything the loader may accidentally be leaving behind for the app
-    save_and_disable_interrupts();
     multicore_reset_core1();
+
+    extern uint32_t __StackOneBottom;
+    uint32_t *stack_bottom = (uint32_t *) &__StackOneBottom;
+    multicore_launch_core1_with_stack(multicore_can2040Stop, stack_bottom, PICO_CORE1_STACK_SIZE);
+
     spin_locks_reset();
+
+    * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0001U;
 
     launch_kocherga_bin();
 }
 
 int main()
 {
-    // * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U;
+    * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U;
     o1heapSetup();
-
-    //__breakpoint();
 
 
     // Check if the application has passed any arguments to the bootloader via shared RAM.
     // The address where the arguments are stored obviously has to be shared with the application.
     // If the application uses heap, then it might be a good idea to alias this area with the heap.
     // std::optional<ArgumentsFromApplication> args =
-    //     kocherga::VolatileStorage<ArgumentsFromApplication>(reinterpret_cast<std::uint8_t*>(0x2004'1800U)).take();
+    //     kocherga::VolatileStorage<ArgumentsFromApplication>(reinterpret_cast<std::uint8_t*>(0x2040'0000U - 0x0800)).take();
 
     // Initialize the bootloader core.
     PicoFlashBackend rom_backend;
     kocherga::SystemInfo system_info = picoBoardSysInfo();
-    kocherga::Bootloader::Params params{.max_app_size = 0x0001'0000U};  // Read the docs on the available params.
+    kocherga::Bootloader::Params params{.max_app_size = 0x001c'0000U, .linger = false};  // Read the docs on the available params.
     kocherga::Bootloader boot(rom_backend, system_info, params);
     // It's a good idea to check if the app is valid and safe to boot before adding the nodes.
     // This way you can skip the potentially slow or disturbing interface initialization on the happy path.
     // You can do it by calling poll() here once.
+
+    const uint_fast64_t uptime = time_us_64();
+    if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
+    {
+        if (*fin == kocherga::Final::BootApp)
+        {
+            app_start();
+        }
+        else if (*fin == kocherga::Final::Restart)
+        {
+            picoRestart();
+        }
+        // Restart or boot returned. This is bad
+        assert(false);
+    }
 
     // // Add a Cyphal/serial node to the bootloader instance.
     // MySerialPort serial_port;
@@ -449,7 +473,7 @@ int main()
     // {
     //     serial_node.setLocalNodeID(args->cyphal_serial_node_id);
     // }
-    // boot.addNode(&serial_nod:e);
+    // boot.addNode(&serial_node);
 
     // Add a Cyphal/CAN node to the bootloader instance.
     std::optional<kocherga::can::ICANDriver::Bitrate> can_bitrate;
@@ -477,42 +501,43 @@ int main()
 
     spin_locks_reset();
 
-    if (boot.addNode(&can_node)) {
-        while (true)
-        {
-            const uint_fast64_t uptime = time_us_64();
-            if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
-            {
-
-                if (*fin == kocherga::Final::BootApp)
-                {
-                    app_start();
-                }
-                else if (*fin == kocherga::Final::Restart)
-                {
-                    picoRestart();
-                }
-                // Restart or boot returned. This is bad
-                assert(false);
-            }
-            // // Trigger the update process internally if the required arguments are provided by the application.
-            // // The trigger method cannot be called before the first poll().
-            // if (args && (args->trigger_node_index < 2))
-            // {
-            //     (void) boot.trigger(args->trigger_node_index,                   // Use serial or CAN?
-            //                         args->file_server_node_id,                  // Which node to download the file from?
-            //                         std::strlen((const char*) args->remote_file_path.data()), // Remote file path length.
-            //                         args->remote_file_path.data());
-            //     args.reset();
-            // }
-
-            gpio_put(PICO_DEFAULT_LED_PIN, uptime & (1U << 20U));
-            // Sleep until the next hardware event (like reception of CAN frame or UART byte) but no longer than
-            // 1 second. A fixed sleep is also acceptable but the resulting polling interval should be adequate
-            // to avoid data loss (about 100 microseconds is usually ok).
-            busy_wait_us_32(10U);
-        }
+    if (!boot.addNode(&can_node)) {
+        picoRestart();
     }
 
-    picoRestart();
+    while (true)
+    {
+        const uint_fast64_t uptime = time_us_64();
+        if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
+        {
+
+            if (*fin == kocherga::Final::BootApp)
+            {
+                app_start();
+            }
+            else if (*fin == kocherga::Final::Restart)
+            {
+                picoRestart();
+            }
+            // Restart or boot returned. This is bad
+            assert(false);
+        }
+
+        // // Trigger the update process internally if the required arguments are provided by the application.
+        // // The trigger method cannot be called before the first poll().
+        // if (args && (args->trigger_node_index < 2))
+        // {
+        //     (void) boot.trigger(args->trigger_node_index,                   // Use serial or CAN?
+        //                         args->file_server_node_id,                  // Which node to download the file from?
+        //                         std::strlen((const char*) args->remote_file_path.data()), // Remote file path length.
+        //                         args->remote_file_path.data());
+        //     args.reset();
+        // }
+
+        gpio_put(PICO_DEFAULT_LED_PIN, uptime & (1U << 20U));
+        // Sleep until the next hardware event (like reception of CAN frame or UART byte) but no longer than
+        // 1 second. A fixed sleep is also acceptable but the resulting polling interval should be adequate
+        // to avoid data loss (about 100 microseconds is usually ok).
+        busy_wait_us_32(10U);
+    }
 }

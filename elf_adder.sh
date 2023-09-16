@@ -7,6 +7,8 @@
 # $2: Source/Donor Elf
 #
 
+echo "Adding $2 to $1"
+
 rm -f out.elf
 arm-none-eabi-objcopy $1 out.elf
 

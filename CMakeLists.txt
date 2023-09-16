@@ -12,7 +12,7 @@ include(sdk/pico-sdk/external/pico_sdk_import.cmake)
 # Set up the main project
 project(pico_kocherga C CXX ASM)
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # Initialize the SDK
 pico_sdk_init()
@@ -28,8 +28,15 @@ add_compile_options(-Wall
 # Libraries and dependencies
 add_subdirectory(lib)
 
+# Select what app payload to ship with hello-kocherga.elf
+set(HELLO_KOCHERGA_PAYLOAD "cyphal++-blink")
+# set(HELLO_KOCHERGA_PAYLOAD "kocherga-blink")
+
+
 # Targets
 add_subdirectory(hello-kocherga)
 add_subdirectory(kocherga-blink)
 add_subdirectory(auto-loader)
+add_subdirectory(cyphal++-blink)
+
 

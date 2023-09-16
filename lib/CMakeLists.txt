@@ -10,6 +10,7 @@
 ]]
 
 # Libraries with a build system
+add_subdirectory(107-Arduino-Cyphal)
 
 
 # Libraries without a build system
@@ -17,7 +18,6 @@ add_library(o1heap STATIC o1heap/o1heap/o1heap.c)
 
 
 target_include_directories(o1heap PUBLIC o1heap/o1heap)
-
 
 # can2040
 add_library(can2040 can2040/src/can2040.c)
@@ -34,8 +34,6 @@ target_link_libraries(can2040 PUBLIC
         pico_stdlib
         hardware_pio
         )
-
-pico_set_binary_type(can2040 copy_to_ram)
 
 # Header only libraries
 add_library(kocherga INTERFACE)

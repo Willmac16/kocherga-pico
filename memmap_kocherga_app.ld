@@ -28,7 +28,6 @@ MEMORY
 {
     FLASH(rx) : ORIGIN = 0x10000000 + __APP_OFFSET, LENGTH = 2048k - __APP_OFFSET
     RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 256k - __ARGS_OFFSET
-    ARGS_FOR_KOCHERGA(rwx) : ORIGIN = ORIGIN(RAM) + LENGTH(RAM), LENGTH = __ARGS_OFFSET
     SCRATCH_X(rwx) : ORIGIN = 0x20040000, LENGTH = 4k
     SCRATCH_Y(rwx) : ORIGIN = 0x20041000, LENGTH = 4k
 }
@@ -197,14 +196,6 @@ SECTIONS
     } > SCRATCH_Y AT > FLASH
     __scratch_y_source__ = LOADADDR(.scratch_y);
 
-    .args_for_kocherga : {
-        __args_for_kocherga_start__ = .;
-        *(.args_for_kocherga.*)
-        . = ALIGN(4);
-        __args_for_kocherga_end__ = .;
-    } > ARGS_FOR_KOCHERGA AT > FLASH
-    __args_for_kocherga_source__ = LOADADDR(.args_for_kocherga);
-
     .bss  : {
         . = ALIGN(4);
         __bss_start__ = .;
@@ -222,6 +213,7 @@ SECTIONS
         __HeapLimit = .;
     } > RAM
 
+
     /* .stack*_dummy section doesn't contains any symbols. It is only
      * used for linker to calculate size of stack sections, and assign
      * values to stack symbols later
@@ -231,13 +223,14 @@ SECTIONS
     /* by default we put core 0 stack at the end of scratch Y, so that if core 1
      * stack is not used then all of SCRATCH_X is free.
      */
-    .stack1_dummy (NOLOAD):
-    {
-        *(.stack1*)
-    } > SCRATCH_X
     .stack_dummy (NOLOAD):
     {
         KEEP(*(.stack*))
+    } > RAM
+
+    .stack1_dummy (NOLOAD):
+    {
+        KEEP(*(.stack1*))
     } > SCRATCH_Y
 
     .flash_end : {
@@ -245,15 +238,20 @@ SECTIONS
     } > FLASH
 
     /* stack limit is poorly named, but historically is maximum heap ptr */
-    __StackLimit = ORIGIN(RAM) + LENGTH(RAM);
-    __StackOneTop = ORIGIN(SCRATCH_X) + LENGTH(SCRATCH_X);
-    __StackTop = ORIGIN(SCRATCH_Y) + LENGTH(SCRATCH_Y);
-    __StackOneBottom = __StackOneTop - SIZEOF(.stack1_dummy);
+    __StackLimit = ORIGIN(RAM) + LENGTH(RAM) - SIZEOF(.stack_dummy);
+    __StackOneTop = ORIGIN(SCRATCH_Y) + LENGTH(SCRATCH_Y);
+    __StackTop = ORIGIN(RAM) + LENGTH(RAM);
+    __StackOneBottom = ORIGIN(SCRATCH_Y);
     __StackBottom = __StackTop - SIZEOF(.stack_dummy);
     PROVIDE(__stack = __StackTop);
 
-    /* Check if data + heap + stack exceeds RAM limit */
+    /* Check if data + heap exceeds RAM limit */
     ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed")
+
+    /* Check if stack exceeds stack limit */
+    ASSERT(__StackOneBottom >= ORIGIN(SCRATCH_Y), "Stack One RAM overflowed")
+
+    ASSERT(__flash_binary_end - __flash_binary_start < LENGTH(FLASH), "Flash Overflow")
 
     ASSERT( __binary_info_header_end - __logical_binary_start <= 256, "Binary info must be in first 256 bytes of the binary")
     /* todo assert on extra code */
