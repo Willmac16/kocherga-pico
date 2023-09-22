@@ -80,6 +80,10 @@ int main() {
         */
         CanardFrame frame;
 
+        uint8_t payload[8];
+
+        frame.payload = payload;
+
         // Empty Queue of received frames
         while(crossCoreCanReceive(&frame)) {
             node_hdl.onCanFrameReceived(frame);

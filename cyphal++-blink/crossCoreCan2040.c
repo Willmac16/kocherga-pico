@@ -32,12 +32,10 @@ volatile struct can2040mailbox mailbox[CAN_MAILBOX_SIZE];
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
     if (notify == CAN2040_NOTIFY_RX) {
-        static uint8_t mailbox_index = 0;
-
         const uint8_t num_mailboxes = sizeof(mailbox) / sizeof(struct can2040mailbox);
 
         // Try to find a mailbox to put the msg in
-        for (mailbox_index = mailbox_index % num_mailboxes; mailbox_index < num_mailboxes; mailbox_index++) {
+        for (uint8_t mailbox_index = 0; mailbox_index < num_mailboxes; mailbox_index++) {
             // If mailbox is empty or marked read then use it (isn't unread)
             if ((mailbox[mailbox_index].flags & 0x03) != 0x01) {
                 // Yes I know I am casting away volatile
@@ -137,10 +135,10 @@ int crossCoreCanReceive(CanardFrame * const outFrame)
     for (mailbox_index = mailbox_index % num_mailboxes; mailbox_index < num_mailboxes; mailbox_index++) {
         // If mailbox is full and unread read it and mark as read
         if (((mailbox[mailbox_index].flags ^ 0x02) & 0x03) == 0x03) {
-            const struct can2040_msg * const m = (struct can2040_msg *const) &(mailbox[mailbox_index].msg);
+            const struct can2040_msg * const m = (struct can2040_msg *const) &mailbox[mailbox_index].msg;
             uint8_t len = CanardCANDLCToLength[m->dlc];
             memcpy((void * restrict) outFrame->payload, m->data, len);
-            outFrame->extended_can_id = m->id;
+            outFrame->extended_can_id = m->id & ~(CAN2040_ID_RTR | CAN2040_ID_EFF);
             outFrame->payload_size = len;
 
             mailbox[mailbox_index].flags |= 0x02;

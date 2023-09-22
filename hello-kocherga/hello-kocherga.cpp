@@ -190,12 +190,11 @@ static volatile kocherga::can::ICANDriver::Bitrate bitrateArg;
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
     if (notify == CAN2040_NOTIFY_RX) {
-        uint8_t mailbox_index = 0;
 
         const uint8_t num_mailboxes = sizeof(mailbox) / sizeof(struct can2040mailbox);
 
         // Try to find a mailbox to put the msg in
-        for (mailbox_index = mailbox_index % num_mailboxes; mailbox_index < num_mailboxes; mailbox_index++) {
+        for (uint8_t mailbox_index = 0; mailbox_index < num_mailboxes; mailbox_index++) {
             // If mailbox is empty or marked read then use it (isn't unread)
             if ((mailbox[mailbox_index].flags & 0x03) != 0x01) {
                 // Yes I know I am casting away volatile
@@ -451,20 +450,20 @@ int main()
     // This way you can skip the potentially slow or disturbing interface initialization on the happy path.
     // You can do it by calling poll() here once.
 
-    const uint_fast64_t uptime = time_us_64();
-    if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
-    {
-        if (*fin == kocherga::Final::BootApp)
-        {
-            app_start();
-        }
-        else if (*fin == kocherga::Final::Restart)
-        {
-            picoRestart();
-        }
-        // Restart or boot returned. This is bad
-        assert(false);
-    }
+    // const uint_fast64_t uptime = time_us_64();
+    // if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
+    // {
+    //     if (*fin == kocherga::Final::BootApp)
+    //     {
+    //         app_start();
+    //     }
+    //     else if (*fin == kocherga::Final::Restart)
+    //     {
+    //         picoRestart();
+    //     }
+    //     // Restart or boot returned. This is bad
+    //     assert(false);
+    // }
 
     // // Add a Cyphal/serial node to the bootloader instance.
     // MySerialPort serial_port;
