@@ -206,6 +206,8 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
                 memcpy(m, msg, sizeof(struct can2040_msg));
                 mailbox[mailbox_index].flags = 0x01;
 
+                __sev();
+
                 return;
             }
         }
@@ -262,7 +264,7 @@ void multicore_can2040Init(void) {
 
     // Keep this core "busy" so it doesnt try to execute random memory
     while (1) {
-        tight_loop_contents();
+        __wfe();
     }
 }
 
@@ -373,31 +375,14 @@ struct kocherga::SystemInfo picoBoardSysInfo()
     return sysInf;
 }
 
-/// The application may pass this structure when rebooting into the bootloader.
-/// Feel free to modify the contents to suit your system.
-/// It is a good idea to include an explicit version field here for future-proofing.
-// struct ArgumentsFromApplication
-// {
-//     std::uint32_t                           cyphal_can_bitrate_primary  = 1000000;
-//     std::uint32_t                           cyphal_can_bitrate_flexible = 8000000;
-//     std::uint8_t                            cyphal_can_not_dronecan = 1;    ///< 0xFF-unknown; 0-DroneCAN; 1-Cyphal/CAN.
-//     std::uint8_t                            cyphal_can_node_id = 123;         ///< Invalid if unknown.
-
-//     std::uint8_t                  trigger_node_index = 1;       ///< 0 - serial, 1 - CAN, >1 - none.
-//     std::uint16_t                 file_server_node_id = 321;      ///< Invalid if unknown
-//     std::array<std::uint8_t, 256> remote_file_path = {"/sbin/leet/hacks.bin"};
-
-// };
-
 struct ArgumentsFromApplication
 {
-    std::uint32_t                           cyphal_can_bitrate_primary;
-    std::uint8_t                            cyphal_can_not_dronecan;    ///< 0xFF-unknown; 0-DroneCAN; 1-Cyphal/CAN.
-    std::uint8_t                            cyphal_can_node_id;         ///< Invalid if unknown.
+    std::uint8_t  args_from_app_version_major;
+    std::uint16_t cyphal_serial_node_id;                    ///< Invalid if unknown.
 
-    std::uint8_t                  trigger_node_index;       ///< 0 - serial, 1 - CAN, >1 - none.
-    std::uint16_t                 file_server_node_id;      ///< Invalid if unknown
-    std::array<std::uint8_t, 256> remote_file_path;
+    std::uint8_t                            cyphal_can_node_id;         ///< Invalid if unknown.
+    std::uint16_t                 file_server_node_id;      ///< Invalid if unknown.
+    std::array<std::uint8_t, 256> remote_file_path;         ///< Null-terminated string.
 
     ArgumentsFromApplication() = default;
 };
@@ -405,16 +390,7 @@ struct ArgumentsFromApplication
 static_assert(std::is_trivial_v<ArgumentsFromApplication>);
 
 
-void picoRestart()
-{
-    // Reset the watchdog timer
-    watchdog_enable(1, 0);
-    while(1) {
-        tight_loop_contents(); // Literally a no-op, but the one the SDK uses
-    }
-}
-
-void app_start(void) {
+void cleanUpKocherga() {
     // Wipe out anything the loader may accidentally be leaving behind for the app
     multicore_reset_core1();
 
@@ -426,7 +402,29 @@ void app_start(void) {
 
     * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0001U;
 
+    return;
+}
+
+void picoRestart()
+{
+    cleanUpKocherga();
+
+    // Reset the watchdog timer
+    watchdog_enable(1, 0);
+    while(1) {
+        tight_loop_contents(); // Literally a no-op, but the one the SDK uses
+    }
+}
+
+void app_start(void) {
+    cleanUpKocherga();
+
     launch_kocherga_bin();
+}
+
+bool repeating_timer_callback(struct repeating_timer *t) {
+    watchdog_update();
+    return true;
 }
 
 int main()
@@ -438,8 +436,8 @@ int main()
     // Check if the application has passed any arguments to the bootloader via shared RAM.
     // The address where the arguments are stored obviously has to be shared with the application.
     // If the application uses heap, then it might be a good idea to alias this area with the heap.
-    // std::optional<ArgumentsFromApplication> args =
-    //     kocherga::VolatileStorage<ArgumentsFromApplication>(reinterpret_cast<std::uint8_t*>(0x2040'0000U - 0x0800)).take();
+    std::optional<ArgumentsFromApplication> args =
+        kocherga::VolatileStorage<ArgumentsFromApplication>(reinterpret_cast<std::uint8_t*>(0x2004'0000U - 0x0800)).take();
 
     // Initialize the bootloader core.
     PicoFlashBackend rom_backend;
@@ -450,20 +448,20 @@ int main()
     // This way you can skip the potentially slow or disturbing interface initialization on the happy path.
     // You can do it by calling poll() here once.
 
-    // const uint_fast64_t uptime = time_us_64();
-    // if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
-    // {
-    //     if (*fin == kocherga::Final::BootApp)
-    //     {
-    //         app_start();
-    //     }
-    //     else if (*fin == kocherga::Final::Restart)
-    //     {
-    //         picoRestart();
-    //     }
-    //     // Restart or boot returned. This is bad
-    //     assert(false);
-    // }
+    const uint_fast64_t uptime = time_us_64();
+    if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
+    {
+        if (*fin == kocherga::Final::BootApp)
+        {
+            app_start();
+        }
+        else if (*fin == kocherga::Final::Restart)
+        {
+            picoRestart();
+        }
+        // Restart or boot returned. This is bad
+        assert(false);
+    }
 
     // // Add a Cyphal/serial node to the bootloader instance.
     // MySerialPort serial_port;
@@ -478,15 +476,13 @@ int main()
     std::optional<kocherga::can::ICANDriver::Bitrate> can_bitrate;
     std::optional<std::uint8_t>                       cyphal_can_not_dronecan;
     std::optional<kocherga::NodeID>                   cyphal_can_node_id;
-
-    can_bitrate = kocherga::can::ICANDriver::Bitrate{1'000'000U, 8'000'000U};
+    can_bitrate = kocherga::can::ICANDriver::Bitrate{1'000'000U, 1'000'000U};
     cyphal_can_not_dronecan = 1;
-    // cyphal_can_node_id = 111;
 
-    // if (args)
-    // {
-    //     cyphal_can_node_id = args->cyphal_can_node_id;          // Will be ignored if invalid.
-    // }
+    if (args)
+    {
+        cyphal_can_node_id = args->cyphal_can_node_id;
+    }
     Can2040Driver can_driver;
     kocherga::can::CANNode can_node(can_driver,
                                     system_info.unique_id,
@@ -503,6 +499,10 @@ int main()
     if (!boot.addNode(&can_node)) {
         picoRestart();
     }
+
+    // struct repeating_timer timer;
+    // add_repeating_timer_ms(-250, repeating_timer_callback, NULL, &timer);
+    // watchdog_enable(500, 0);
 
     while (true)
     {
@@ -522,21 +522,18 @@ int main()
             assert(false);
         }
 
-        // // Trigger the update process internally if the required arguments are provided by the application.
-        // // The trigger method cannot be called before the first poll().
-        // if (args && (args->trigger_node_index < 2))
-        // {
-        //     (void) boot.trigger(args->trigger_node_index,                   // Use serial or CAN?
-        //                         args->file_server_node_id,                  // Which node to download the file from?
-        //                         std::strlen((const char*) args->remote_file_path.data()), // Remote file path length.
-        //                         args->remote_file_path.data());
-        //     args.reset();
-        // }
+        // Trigger the update process internally if the required arguments are provided by the application.
+        // The trigger method cannot be called before the first poll().
+        if (args)
+        {
+            (void) boot.trigger(&can_node,                   // Use serial or CAN?
+                                args->file_server_node_id,                  // Which node to download the file from?
+                                std::strlen((const char*) args->remote_file_path.data()), // Remote file path length.
+                                args->remote_file_path.data());
+            args.reset();
+        }
 
         gpio_put(PICO_DEFAULT_LED_PIN, uptime & (1U << 20U));
-        // Sleep until the next hardware event (like reception of CAN frame or UART byte) but no longer than
-        // 1 second. A fixed sleep is also acceptable but the resulting polling interval should be adequate
-        // to avoid data loss (about 100 microseconds is usually ok).
-        busy_wait_us_32(10U);
+        __wfe();
     }
 }

@@ -47,16 +47,14 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
                 memcpy(m, msg, sizeof(struct can2040_msg));
                 mailbox[mailbox_index].flags = 0x01;
 
+                __sev();
+
                 return;
             }
         }
 
         // No available Mailbox, msg lost
         return;
-    } else if (notify == CAN2040_NOTIFY_TX) {
-        printf("Transmit Complete\n");
-    } else if (notify == CAN2040_NOTIFY_ERROR) {
-        printf("Internal Receive Buffer Overflow\n");
     }
 }
 
@@ -90,7 +88,7 @@ void multicore_can2040Init(void) {
 
     // Keep this core "busy" so it doesnt try to execute random memory
     while (1) {
-        tight_loop_contents();
+        __wfe();
     }
 }
 
