@@ -13,7 +13,8 @@
  * INCLUDE
  **************************************************************************************/
 
-#define HOMEBREW_GET_INFO
+#define EXEC_COMMAND
+// #define HOMEBREW_GET_INFO
 // #define HOMEBREW_ADD_CRC
 // #define HOMEBREW_ADD_NAME
 
@@ -56,7 +57,10 @@ static CanardPortID const BIT_PORT_ID = 1620U;
  * FUNCTION DECLARATION
  **************************************************************************************/
 
-// ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const &, cyphal::TransferMetadata const &);
+#ifdef EXEC_COMMAND
+ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const &, cyphal::TransferMetadata const &);
+#endif
+
 #ifdef HOMEBREW_GET_INFO
 GetInfo::Response_1_0 onGetInfo_1_0_Request_Received(GetInfo::Request_1_0 const &, cyphal::TransferMetadata const &);
 #endif
@@ -99,9 +103,11 @@ cyphal::Publisher<Heartbeat_1_0> heartbeat_pub = node_hdl.create_publisher<Heart
   (1*1000*1000UL /* = 1 sec in usecs. */);
 cyphal::Subscription bit_subscription = node_hdl.create_subscription<Bit_1_0>
   (BIT_PORT_ID, onBit_1_0_Received);
-// cyphal::ServiceServer execute_command_srv = node_hdl.create_service_server<ExecuteCommand::Request_1_1, ExecuteCommand::Response_1_1>(
-//   2*1000*1000UL,
-//   onExecuteCommand_1_1_Request_Received);
+#ifdef EXEC_COMMAND
+cyphal::ServiceServer execute_command_srv = node_hdl.create_service_server<ExecuteCommand::Request_1_1, ExecuteCommand::Response_1_1>(
+  2*1000*1000UL,
+  onExecuteCommand_1_1_Request_Received);
+#endif
 
 #ifdef HOMEBREW_GET_INFO
 cyphal::ServiceServer get_info_srv = node_hdl.create_service_server<GetInfo::Request_1_0, GetInfo::Response_1_0>(
@@ -174,33 +180,35 @@ void onBit_1_0_Received(Bit_1_0 const & msg)
     gpio_put(PICO_DEFAULT_LED_PIN, msg.value);
 }
 
-// ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const & req, cyphal::TransferMetadata const & metadata)
-// {
-//     ExecuteCommand::Response_1_1 rsp;
+#ifdef EXEC_COMMAND
+ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const & req, cyphal::TransferMetadata const & metadata)
+{
+    ExecuteCommand::Response_1_1 rsp;
 
-//     std::string parameter;
+    std::string parameter;
 
-//     if (req.command == uavcan::node::ExecuteCommand::Request_1_1::COMMAND_BEGIN_SOFTWARE_UPDATE) {
-//         ArgumentsFromApplication args = {
-//             .args_from_app_version_major = 0,
-//             .cyphal_serial_node_id = 0xFF,
-//             .cyphal_can_node_id = node_hdl.getNodeId(),
-//             .file_server_node_id = metadata.remote_node_id
-//         };
+    if (req.command == uavcan::node::ExecuteCommand::Request_1_1::COMMAND_BEGIN_SOFTWARE_UPDATE) {
+        ArgumentsFromApplication args = {
+            .args_from_app_version_major = 0,
+            .cyphal_serial_node_id = 0xFF,
+            .cyphal_can_node_id = node_hdl.getNodeId(),
+            .file_server_node_id = metadata.remote_node_id
+        };
 
-//         std::copy(req.parameter.begin(), req.parameter.end(), args.remote_file_path.begin());
+        std::copy(req.parameter.begin(), req.parameter.end(), args.remote_file_path.begin());
 
-//         VolatileStorage<ArgumentsFromApplication> volatileStore(reinterpret_cast<std::uint8_t*>(ARGS_ADDR));
-//         volatileStore.store(args);
+        VolatileStorage<ArgumentsFromApplication> volatileStore(reinterpret_cast<std::uint8_t*>(ARGS_ADDR));
+        volatileStore.store(args);
 
-//         picoRestart();
-//     } else if (req.command == 0xCAFE) {
-//         rsp.status = ExecuteCommand::Response_1_1::STATUS_SUCCESS;
-//     } else {
-//         rsp.status = uavcan::node::ExecuteCommand_1_1::Response::STATUS_BAD_COMMAND;
-//     }
-//     return rsp;
-// }
+        picoRestart();
+    } else if (req.command == 0xCAFE) {
+        rsp.status = ExecuteCommand::Response_1_1::STATUS_SUCCESS;
+    } else {
+        rsp.status = uavcan::node::ExecuteCommand_1_1::Response::STATUS_BAD_COMMAND;
+    }
+    return rsp;
+}
+#endif
 
 #ifdef HOMEBREW_GET_INFO
 GetInfo::Response_1_0 onGetInfo_1_0_Request_Received(GetInfo::Request_1_0 const & req, cyphal::TransferMetadata const & metadata)
