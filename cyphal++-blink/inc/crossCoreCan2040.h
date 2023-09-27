@@ -13,4 +13,4 @@ int crossCoreCanReceive(CanardFrame * const outFrame);
 #define PICO_STACK_SIZE _u(0x10000)
 #define PICO_CORE1_STACK_SIZE _u(0x1000)
 
-#define CAN_MAILBOX_SIZE 32U
+#define CAN_MAILBOX_SIZE 8U

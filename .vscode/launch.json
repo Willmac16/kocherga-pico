@@ -4,6 +4,7 @@
 
         {
             "name": "Pico Debug",
+            // "preLaunchTask": "CMake: clean rebuild",
             "cwd": "${workspaceRoot}",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
@@ -17,6 +18,11 @@
                 "target/rp2040.cfg"
             ],
             "svdFile": "${env:PICO_SDK_PATH}/src/rp2040/hardware_regs/rp2040.svd",
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off",
+                "set verbose on",
+                "add-symbol-file ${workspaceRoot}/build/hello-kocherga/hello-kocherga.elf"
+            ],
             // Work around for stopping at main on restart
             "postRestartCommands": [
                 "break main",

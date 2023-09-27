@@ -21,7 +21,7 @@
     __stack (== StackTop)
 */
 
-__APP_OFFSET = 256k;
+__APP_OFFSET = 128k;
 __ARGS_OFFSET = 2k;
 
 MEMORY
@@ -203,6 +203,12 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         __bss_end__ = .;
+    } > RAM
+
+    .o1heap (NOLOAD):
+    {
+        . = ALIGN(32);
+        KEEP(*(.o1heap*))
     } > RAM
 
     .heap (NOLOAD):

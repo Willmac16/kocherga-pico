@@ -29,14 +29,14 @@ add_compile_options(-Wall
 add_subdirectory(lib)
 
 # Select what app payload to ship with hello-kocherga.elf
-set(HELLO_KOCHERGA_PAYLOAD "cyphal++-blink")
+# set(HELLO_KOCHERGA_PAYLOAD "cyphal++-blink")
 # set(HELLO_KOCHERGA_PAYLOAD "kocherga-blink")
 
 
 # Targets
 add_subdirectory(hello-kocherga)
-add_subdirectory(kocherga-blink)
-add_subdirectory(auto-loader)
+# add_subdirectory(kocherga-blink)
+# add_subdirectory(auto-loader)
 add_subdirectory(cyphal++-blink)
 
 

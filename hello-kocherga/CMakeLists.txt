@@ -36,12 +36,12 @@ pico_set_linker_script(hello-kocherga ${CMAKE_CURRENT_SOURCE_DIR}/memmap_kocherg
 
 pico_add_extra_outputs(hello-kocherga)
 
-add_dependencies(hello-kocherga ${HELLO_KOCHERGA_PAYLOAD})
+# add_dependencies(hello-kocherga ${HELLO_KOCHERGA_PAYLOAD})
 
-add_custom_command(TARGET hello-kocherga
-        POST_BUILD
-        COMMAND ${PROJECT_SOURCE_DIR}/elf_adder.sh hello-kocherga.elf ../${HELLO_KOCHERGA_PAYLOAD}/${HELLO_KOCHERGA_PAYLOAD}.elf
-        DEPENDS ${PROJECT_SOURCE_DIR}/elf_adder.sh
-        DEPENDS ${HELLO_KOCHERGA_PAYLOAD}.elf
-        VERBATIM
-        )
+# add_custom_command(TARGET hello-kocherga
+#         POST_BUILD
+#         COMMAND ${PROJECT_SOURCE_DIR}/elf_adder.sh hello-kocherga.elf ../${HELLO_KOCHERGA_PAYLOAD}/${HELLO_KOCHERGA_PAYLOAD}.elf
+#         DEPENDS ${PROJECT_SOURCE_DIR}/elf_adder.sh
+#         DEPENDS ${HELLO_KOCHERGA_PAYLOAD}.elf
+#         VERBATIM
+#         )

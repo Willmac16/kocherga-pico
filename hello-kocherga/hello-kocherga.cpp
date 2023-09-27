@@ -249,11 +249,6 @@ void multicore_can2040Stop(void) {
 
     can2040_stop(&cbus);
 
-    // Reset PIO
-    constexpr uint32_t reset_bits = RESETS_RESET_PIO0_BITS | RESETS_RESET_PIO1_BITS | RESETS_RESET_IO_BANK0_BITS;
-    reset_block(reset_bits);
-    unreset_block_wait(reset_bits);
-
     while(1) {
         tight_loop_contents(); // Literally a no-op, but the one the SDK uses
     }
@@ -431,7 +426,6 @@ int main()
 {
     * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U;
     o1heapSetup();
-
 
     // Check if the application has passed any arguments to the bootloader via shared RAM.
     // The address where the arguments are stored obviously has to be shared with the application.

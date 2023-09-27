@@ -21,7 +21,7 @@
     __stack (== StackTop)
 */
 
-__APP_OFFSET = 256k;
+__APP_OFFSET = 128k;
 __ARGS_OFFSET = 2k;
 
 MEMORY
