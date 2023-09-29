@@ -43,7 +43,8 @@ SECTIONS
         __flash_binary_start = .;
     } > FLASH
 
-    .app_descriptor : {
+    .app_descriptor : ALIGN(256) {
+        FILL(0xDEADC0DE);
         __app_desc_start__ = .;
         KEEP (*(.app_descriptor))
         __app_desc_end__ = .;
@@ -59,7 +60,8 @@ SECTIONS
        launches only, to perform proper flash setup.
     */
 
-    .text : ALIGN(256) {
+    .text : ALIGN(4) SUBALIGN(4) {
+        FILL(0xDEADC0DE);
         __logical_binary_start = .;
         KEEP (*(.vectors))
         KEEP (*(.binary_info_header))
@@ -86,13 +88,11 @@ SECTIONS
 
         *(.eh_frame*)
         . = ALIGN(4);
-    } > FLASH
-
-    .rodata : {
+        /* . = ALIGN(4); */
         *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a:) .rodata*)
         . = ALIGN(4);
         *(SORT_BY_ALIGNMENT(SORT_BY_NAME(.flashdata*)))
-        . = ALIGN(4);
+        . = ALIGN(8);
     } > FLASH
 
     .ARM.extab :
@@ -110,19 +110,18 @@ SECTIONS
     /* Machine inspectable binary information */
     . = ALIGN(4);
     __binary_info_start = .;
-    .binary_info :
+    .binary_info : ALIGN(4) SUBALIGN(4)
     {
+        FILL(0xDEADC0DE);
         KEEP(*(.binary_info.keep.*))
         *(.binary_info.*)
+        . = ALIGN(8);
     } > FLASH
     __binary_info_end = .;
-    . = ALIGN(4);
 
-   .ram_vector_table (NOLOAD): {
-        *(.ram_vector_table)
-    } > RAM
 
-    .data : {
+    .data : ALIGN(8) {
+        FILL(0xDEADC0DE);
         __data_start__ = .;
         *(vtable)
 
@@ -174,13 +173,10 @@ SECTIONS
     /* __etext is (for backwards compatibility) the name of the .data init source pointer (...) */
     __etext = LOADADDR(.data);
 
-    .uninitialized_data (NOLOAD): {
-        . = ALIGN(4);
-        *(.uninitialized_data*)
-    } > RAM
-
     /* Start and end symbols must be word-aligned */
-    .scratch_x : {
+    .scratch_x : ALIGN(4) SUBALIGN(4) {
+        FILL(0xDEADC0DE);
+        . = ALIGN(4);
         __scratch_x_start__ = .;
         *(.scratch_x.*)
         . = ALIGN(4);
@@ -188,13 +184,25 @@ SECTIONS
     } > SCRATCH_X AT > FLASH
     __scratch_x_source__ = LOADADDR(.scratch_x);
 
-    .scratch_y : {
+    .scratch_y : ALIGN(4) SUBALIGN(4){
+        FILL(0xDEADC0DE);
+        . = ALIGN(4);
         __scratch_y_start__ = .;
         *(.scratch_y.*)
         . = ALIGN(4);
         __scratch_y_end__ = .;
     } > SCRATCH_Y AT > FLASH
     __scratch_y_source__ = LOADADDR(.scratch_y);
+
+   .ram_vector_table (NOLOAD): {
+        *(.ram_vector_table)
+    } > RAM
+
+    .uninitialized_data (NOLOAD): ALIGN(4) {
+        . = ALIGN(4);
+        *(.uninitialized_data*)
+    } > RAM
+
 
     .bss  : {
         . = ALIGN(4);

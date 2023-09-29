@@ -13,11 +13,6 @@
  * INCLUDE
  **************************************************************************************/
 
-#define EXEC_COMMAND
-// #define HOMEBREW_GET_INFO
-// #define HOMEBREW_ADD_CRC
-// #define HOMEBREW_ADD_NAME
-
 #include <107-Arduino-Cyphal.h>
 
 #include "appDesc.hpp"
@@ -57,13 +52,8 @@ static CanardPortID const BIT_PORT_ID = 1620U;
  * FUNCTION DECLARATION
  **************************************************************************************/
 
-#ifdef EXEC_COMMAND
 ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const &, cyphal::TransferMetadata const &);
-#endif
 
-#ifdef HOMEBREW_GET_INFO
-GetInfo::Response_1_0 onGetInfo_1_0_Request_Received(GetInfo::Request_1_0 const &, cyphal::TransferMetadata const &);
-#endif
 void onBit_1_0_Received (Bit_1_0 const & msg);
 
 void picoRestart()
@@ -85,37 +75,29 @@ bool repeating_timer_callback(struct repeating_timer *t) {
  * GLOBAL VARIABLES
  **************************************************************************************/
 
-cyphal::Node::Heap<cyphal::Node::DEFAULT_O1HEAP_SIZE> node_heap __attribute__((used, section(".o1heap")));
-cyphal::Node node_hdl(node_heap.data(), node_heap.size(), time_us_64, [] (CanardFrame const & frame) { crossCoreCanSend(&frame); return true; }, 111);
+static const volatile AppDescriptor g_app_descriptor __attribute__((used, section(".app_descriptor")));
 
-#ifndef HOMEBREW_GET_INFO
+static bool reboot = false;
+
+cyphal::Node::Heap<cyphal::Node::DEFAULT_O1HEAP_SIZE> node_heap __attribute__((used, section(".o1heap")));
+cyphal::Node node_hdl(node_heap.data(), node_heap.size(), time_us_64, [] (CanardFrame const & frame) { return crossCoreCanSend(&frame); }, 111);
+
 cyphal::NodeInfo node_info = node_hdl.create_node_info(
   CANARD_CYPHAL_SPECIFICATION_VERSION_MAJOR, CANARD_CYPHAL_SPECIFICATION_VERSION_MINOR,
   0, 1,
   SOFTWARE_VERSION_MAJOR, SOFTWARE_VERSION_MINOR,
   GIT_HASH,
   std::array<uint8_t, 16>{162, 48, 41, 219, 193, 236, 162, 114, 154, 55, 191, 50, 166, 35, 204, 163},
-  "org.cwrubaja.pico.testboard"
+  "org.cwrubaja.pico.testboard", g_app_descriptor.image_crc
 );
-#endif
 
 cyphal::Publisher<Heartbeat_1_0> heartbeat_pub = node_hdl.create_publisher<Heartbeat_1_0>
   (1*1000*1000UL /* = 1 sec in usecs. */);
 cyphal::Subscription bit_subscription = node_hdl.create_subscription<Bit_1_0>
   (BIT_PORT_ID, onBit_1_0_Received);
-#ifdef EXEC_COMMAND
 cyphal::ServiceServer execute_command_srv = node_hdl.create_service_server<ExecuteCommand::Request_1_1, ExecuteCommand::Response_1_1>(
   2*1000*1000UL,
   onExecuteCommand_1_1_Request_Received);
-#endif
-
-#ifdef HOMEBREW_GET_INFO
-cyphal::ServiceServer get_info_srv = node_hdl.create_service_server<GetInfo::Request_1_0, GetInfo::Response_1_0>(
-  10*1000*1000UL,
-  onGetInfo_1_0_Request_Received);
-#endif
-
-static const volatile AppDescriptor g_app_descriptor __attribute__((used, section(".app_descriptor")));
 
 /******************************************5********************************************
  * MAIN
@@ -149,6 +131,11 @@ int main() {
 
         node_hdl.spinSome();
 
+        if (reboot) {
+            reboot = false;
+            picoRestart();
+        }
+
         static uint_fast64_t prev = 0;
         uint_fast64_t now = time_us_64();
 
@@ -167,7 +154,7 @@ int main() {
             heartbeat_pub->publish(msg);
         }
 
-        // __wfe();
+        __wfe();
     }
 }
 
@@ -180,7 +167,6 @@ void onBit_1_0_Received(Bit_1_0 const & msg)
     gpio_put(PICO_DEFAULT_LED_PIN, msg.value);
 }
 
-#ifdef EXEC_COMMAND
 ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const & req, cyphal::TransferMetadata const & metadata)
 {
     ExecuteCommand::Response_1_1 rsp;
@@ -200,51 +186,14 @@ ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteComman
         VolatileStorage<ArgumentsFromApplication> volatileStore(reinterpret_cast<std::uint8_t*>(ARGS_ADDR));
         volatileStore.store(args);
 
-        picoRestart();
-    } else if (req.command == 0xCAFE) {
-        rsp.status = ExecuteCommand::Response_1_1::STATUS_SUCCESS;
+        rsp.status = uavcan::node::ExecuteCommand::Response_1_1::STATUS_SUCCESS;
+
+        reboot = true;
+    } else if (req.command == uavcan::node::ExecuteCommand::Request_1_1::COMMAND_RESTART) {
+        rsp.status = uavcan::node::ExecuteCommand::Response_1_1::STATUS_SUCCESS;
+        reboot = true;
     } else {
         rsp.status = uavcan::node::ExecuteCommand_1_1::Response::STATUS_BAD_COMMAND;
     }
     return rsp;
 }
-#endif
-
-#ifdef HOMEBREW_GET_INFO
-GetInfo::Response_1_0 onGetInfo_1_0_Request_Received(GetInfo::Request_1_0 const & req, cyphal::TransferMetadata const & metadata)
-{
-    GetInfo::Response_1_0 rsp = {
-        .protocol_version = {
-            .major = CANARD_CYPHAL_SPECIFICATION_VERSION_MAJOR,
-            .minor = CANARD_CYPHAL_SPECIFICATION_VERSION_MINOR
-        },
-        .hardware_version = {
-            .major = 0,
-            .minor = 1
-        },
-        .software_version = {
-            .major = SOFTWARE_VERSION_MAJOR,
-            .minor = SOFTWARE_VERSION_MINOR
-        },
-        .software_vcs_revision_id = GIT_HASH,
-        .unique_id = {
-            2, 2, 2, 2, 2, 2, 2, 2,
-            2, 2, 2, 2, 2, 2, 2, 2
-        } // #TODO: Use Flash Unique ID
-    };
-
-    #ifdef HOMEBREW_ADD_CRC
-    std::array<std::uint64_t, 1> const CRC = {g_app_descriptor.image_crc};
-    printf("CRC: %lu\n", CRC[0]);
-    std::copy(CRC.cbegin(), CRC.cend(), std::back_inserter(rsp.software_image_crc));
-    #endif
-
-    #ifdef HOMEBREW_ADD_NAME
-    std::array<std::uint8_t, 30> const name = {"org.cwrubaja.pico.testboard"};
-    printf("name: %lu\n", name);
-    std::copy(name.cbegin(), name.cend(), std::back_inserter(rsp.name));
-    #endif
-
-  return rsp;
-}
-#endif

@@ -393,8 +393,6 @@ void cleanUpKocherga() {
     uint32_t *stack_bottom = (uint32_t *) &__StackOneBottom;
     multicore_launch_core1_with_stack(multicore_can2040Stop, stack_bottom, PICO_CORE1_STACK_SIZE);
 
-    spin_locks_reset();
-
     * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0001U;
 
     return;
@@ -405,27 +403,25 @@ void picoRestart()
     cleanUpKocherga();
 
     // Reset the watchdog timer
-    watchdog_enable(1, 0);
+    watchdog_enable(0, 1);
     while(1) {
         tight_loop_contents(); // Literally a no-op, but the one the SDK uses
     }
 }
 
 void app_start(void) {
+    __breakpoint();
     cleanUpKocherga();
 
     launch_kocherga_bin();
 }
 
-bool repeating_timer_callback(struct repeating_timer *t) {
-    watchdog_update();
-    return true;
-}
+int main() {
+    * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U; // Disable XIP Cache
+    * ((uint32_t *) XIP_CTRL_BASE + 0x04) = 0x0000'0001U; // Flush XIP Cache
 
-int main()
-{
-    * ((uint32_t *) XIP_CTRL_BASE) = 0x0000'0000U;
     o1heapSetup();
+
 
     // Check if the application has passed any arguments to the bootloader via shared RAM.
     // The address where the arguments are stored obviously has to be shared with the application.
@@ -436,25 +432,27 @@ int main()
     // Initialize the bootloader core.
     PicoFlashBackend rom_backend;
     kocherga::SystemInfo system_info = picoBoardSysInfo();
-    kocherga::Bootloader::Params params{.max_app_size = 0x001c'0000U, .linger = false};  // Read the docs on the available params.
+    kocherga::Bootloader::Params params{.max_app_size = 0x001c'0000U, .linger = false, .boot_delay = std::chrono::seconds(10U)};  // Read the docs on the available params.
     kocherga::Bootloader boot(rom_backend, system_info, params);
     // It's a good idea to check if the app is valid and safe to boot before adding the nodes.
     // This way you can skip the potentially slow or disturbing interface initialization on the happy path.
     // You can do it by calling poll() here once.
 
-    const uint_fast64_t uptime = time_us_64();
-    if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
-    {
-        if (*fin == kocherga::Final::BootApp)
-        {
-            app_start();
-        }
-        else if (*fin == kocherga::Final::Restart)
-        {
-            picoRestart();
-        }
-        // Restart or boot returned. This is bad
-        assert(false);
+    if (!args) {
+      const uint_fast64_t uptime = time_us_64();
+      if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
+      {
+          if (*fin == kocherga::Final::BootApp)
+          {
+              app_start();
+          }
+          else if (*fin == kocherga::Final::Restart)
+          {
+              picoRestart();
+          }
+          // Restart or boot returned. This is bad
+          assert(false);
+      }
     }
 
     // // Add a Cyphal/serial node to the bootloader instance.
@@ -487,9 +485,6 @@ int main()
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 
-
-    spin_locks_reset();
-
     if (!boot.addNode(&can_node)) {
         picoRestart();
     }
@@ -503,7 +498,6 @@ int main()
         const uint_fast64_t uptime = time_us_64();
         if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
         {
-
             if (*fin == kocherga::Final::BootApp)
             {
                 app_start();

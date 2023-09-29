@@ -55,6 +55,9 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
 
         // No available Mailbox, msg lost
         return;
+    } else if (notify == CAN2040_NOTIFY_TX) {
+        // Wake up core1 to load another message
+        __sev();
     }
 }
 
