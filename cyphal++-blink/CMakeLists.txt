@@ -18,6 +18,8 @@ add_executable(cyphal++-blink
 # pull in common dependencies
 target_link_libraries(cyphal++-blink
         hardware_watchdog
+        hardware_flash
+        hardware_irq
         pico_stdlib
         pico_multicore
         can2040

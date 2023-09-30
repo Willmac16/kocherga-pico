@@ -29,6 +29,9 @@ extern "C" {
 
 #include "hardware/watchdog.h"
 #include "hardware/sync.h"
+#include "hardware/flash.h"
+#include "hardware/irq.h"
+
 
 #include "pico/stdlib.h"
 
@@ -82,15 +85,6 @@ static bool reboot = false;
 cyphal::Node::Heap<cyphal::Node::DEFAULT_O1HEAP_SIZE> node_heap __attribute__((used, section(".o1heap")));
 cyphal::Node node_hdl(node_heap.data(), node_heap.size(), time_us_64, [] (CanardFrame const & frame) { return crossCoreCanSend(&frame); }, 111);
 
-cyphal::NodeInfo node_info = node_hdl.create_node_info(
-  CANARD_CYPHAL_SPECIFICATION_VERSION_MAJOR, CANARD_CYPHAL_SPECIFICATION_VERSION_MINOR,
-  0, 1,
-  SOFTWARE_VERSION_MAJOR, SOFTWARE_VERSION_MINOR,
-  GIT_HASH,
-  std::array<uint8_t, 16>{162, 48, 41, 219, 193, 236, 162, 114, 154, 55, 191, 50, 166, 35, 204, 163},
-  "org.cwrubaja.pico.testboard", g_app_descriptor.image_crc
-);
-
 cyphal::Publisher<Heartbeat_1_0> heartbeat_pub = node_hdl.create_publisher<Heartbeat_1_0>
   (1*1000*1000UL /* = 1 sec in usecs. */);
 cyphal::Subscription bit_subscription = node_hdl.create_subscription<Bit_1_0>
@@ -106,6 +100,26 @@ cyphal::ServiceServer execute_command_srv = node_hdl.create_service_server<Execu
 int main() {
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+
+    uint8_t flash_unique_id[8];
+    uint32_t intStatus = save_and_disable_interrupts();
+    flash_get_unique_id(flash_unique_id);
+    restore_interrupts(intStatus);
+
+    std::array<uint8_t, 16> unique_id;
+
+    for (uint8_t i = 0; i < 8; i++) {
+        unique_id[2 * i] = flash_unique_id[i];
+    }
+
+  cyphal::NodeInfo node_info = node_hdl.create_node_info(
+      CANARD_CYPHAL_SPECIFICATION_VERSION_MAJOR, CANARD_CYPHAL_SPECIFICATION_VERSION_MINOR,
+      0, 1,
+      SOFTWARE_VERSION_MAJOR, SOFTWARE_VERSION_MINOR,
+      GIT_HASH,
+      unique_id,
+      "org.cwrubaja.pico.testboard", g_app_descriptor.image_crc
+  );
 
     crossCoreCanInit(1'000'000, CAN2040_RX_PIN, CAN2040_TX_PIN);
 

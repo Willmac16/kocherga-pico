@@ -361,9 +361,20 @@ class Can2040Driver final : public kocherga::can::ICANDriver
 
 struct kocherga::SystemInfo picoBoardSysInfo()
 {
+    uint8_t flash_unique_id[8];
+    uint32_t intStatus = save_and_disable_interrupts();
+    flash_get_unique_id(flash_unique_id);
+    restore_interrupts(intStatus);
+
+    std::array<uint8_t, 16> unique_id;
+
+    for (uint8_t i = 0; i < 8; i++) {
+        unique_id[2 * i] = flash_unique_id[2];
+    }
+
     struct kocherga::SystemInfo sysInf = {
         .hardware_version = {0, 1},
-        .unique_id = {2, 2, 2, 2, 2, 2, 2, 2},
+        .unique_id = unique_id,
         .node_name = "org.cwrubaja.pico.testboard"
     };
 
