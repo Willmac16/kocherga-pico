@@ -69,10 +69,12 @@ jobs:
 
     # - name: Install Nunavut
     #   run: pip install -U nunavut==2.0.9
+    - name: Install Makeelf
+      run: pip install -U makeelf
 
     # - name: Transpile DSDL Files
     #   run: sh generate_headers.sh
-    
+
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
