@@ -22,6 +22,7 @@ target_link_libraries(cyphal++-blink
         hardware_irq
         pico_stdlib
         pico_multicore
+        pico_unique_id
         can2040
         cyphal++)
 

@@ -10,13 +10,14 @@ add_executable(hello-kocherga
 target_include_directories(hello-kocherga PRIVATE ${CMAKE_CURRENT_LIST_DIR}/inc)
 
 target_link_libraries(hello-kocherga
+        hardware_flash
+        hardware_sync
+        hardware_watchdog
         pico_stdlib
         pico_platform
         pico_rand
         pico_multicore
-        hardware_flash
-        hardware_sync
-        hardware_watchdog
+        pico_unique_id
         can2040
         kocherga
         o1heap
