@@ -29,7 +29,10 @@ extern "C"
 #include <can2040.h>
 }
 
-static const uint32_t gpio_rx = 4, gpio_tx = 5;
+static int const CAN2040_TX_PIN = 1;
+static int const CAN2040_RX_PIN = 2;
+static int const CAN_BITRATE = 1'000'000;
+static int const SPEED_CTRL = 3;
 
 static O1HeapInstance *oh_one_heap;
 
@@ -246,14 +249,14 @@ void can2040Init(void)
   NVIC_EnableIRQ(pio_irq);
 
   // Start canbus
-  can2040_start(&cbus, sys_clock, bitrate, gpio_rx, gpio_tx);
+  can2040_start(&cbus, sys_clock, bitrate, CAN2040_RX_PIN, CAN2040_TX_PIN);
 }
 
 void multicore_can2040Stop(void)
 {
   // Pullup and take back from PIO both rx and tx pins
-  gpio_init(gpio_rx);
-  gpio_init(gpio_tx);
+  gpio_init(CAN2040_RX_PIN);
+  gpio_init(CAN2040_TX_PIN);
 
   can2040_stop(&cbus);
 
@@ -281,6 +284,11 @@ class Can2040Driver final : public kocherga::can::ICANDriver
                  const kocherga::can::CANAcceptanceFilterConfig &filter) -> std::optional<Mode> override
   {
     bitrateArg.arbitration = bitrate.arbitration;
+
+    // Bring the CAN Speed Control pin to ground for high speed operation
+    gpio_init(SPEED_CTRL);
+    gpio_set_dir(SPEED_CTRL, GPIO_OUT);
+    gpio_put(SPEED_CTRL, 0);
 
     tx_queue_.clear();
     multicore_reset_core1();
@@ -492,7 +500,7 @@ int main()
   std::optional<kocherga::can::ICANDriver::Bitrate> can_bitrate;
   std::optional<std::uint8_t> cyphal_can_not_dronecan;
   std::optional<kocherga::NodeID> cyphal_can_node_id;
-  can_bitrate = kocherga::can::ICANDriver::Bitrate{1'000'000U, 1'000'000U};
+  can_bitrate = kocherga::can::ICANDriver::Bitrate{CAN_BITRATE, CAN_BITRATE};
   cyphal_can_not_dronecan = 1;
 
   if (args)

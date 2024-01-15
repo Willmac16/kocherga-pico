@@ -11,7 +11,7 @@ function(
     set(app ${ARG_OUTPUT_BASENAME}.app.bin)
     add_custom_target(
             ${app} ALL
-            COMMAND rm -f *.bin  # Remove all previous build outputs
+            # COMMAND rm -f *.bin  # Remove all previous build outputs
             COMMAND ${CMAKE_OBJCOPY} -O binary ${elf} ${bin}
             COMMAND ${KOCHERGA_IMAGE_TOOL} --lazy --verbose ${bin} --side-patch ${elf}
             COMMAND rm -f ${bin}

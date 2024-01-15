@@ -1,10 +1,60 @@
 {
     "version": "0.2.0",
     "configurations": [
-
         {
-            "name": "Pico Debug",
-            // "preLaunchTask": "CMake: clean rebuild",
+            "name": "Pi 5 Pico Debug",
+            "cwd": "${workspaceRoot}",
+            "executable": "${command:cmake.launchTargetPath}",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            // This may need to be "arm-none-eabi-gdb" for some previous builds
+            "gdbPath" : "gdb-multiarch",
+            "device": "RP2040",
+            "configFiles": [
+                "interface/raspberrypi5-linuxgpiod.cfg",
+                "target/rp2040.cfg"
+            ],
+            "svdFile": "${env:PICO_SDK_PATH}/src/rp2040/hardware_regs/rp2040.svd",
+            "runToEntryPoint": "main",
+            // Work around for stopping at main on restart
+            "postRestartCommands": [
+                "break main",
+                "continue"
+            ],
+            "liveWatch": {
+              "enabled": true,
+              "samplesPerSecond": 2
+            }
+        },
+        {
+            "name": "Full Pi Pico Debug",
+            "cwd": "${workspaceRoot}",
+            "executable": "${command:cmake.launchTargetPath}",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            // This may need to be "arm-none-eabi-gdb" for some previous builds
+            "gdbPath" : "gdb-multiarch",
+            "device": "RP2040",
+            "configFiles": [
+                "interface/raspberrypi-swd.cfg",
+                "target/rp2040.cfg"
+            ],
+            "svdFile": "${env:PICO_SDK_PATH}/src/rp2040/hardware_regs/rp2040.svd",
+            "runToEntryPoint": "main",
+            // Work around for stopping at main on restart
+            "postRestartCommands": [
+                "break main",
+                "continue"
+            ],
+            "liveWatch": {
+              "enabled": true,
+              "samplesPerSecond": 2
+            }
+        },
+        {
+            "name": "PicoProbe Debug",
             "cwd": "${workspaceRoot}",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
@@ -18,20 +68,50 @@
                 "target/rp2040.cfg"
             ],
             "svdFile": "${env:PICO_SDK_PATH}/src/rp2040/hardware_regs/rp2040.svd",
-            "preLaunchCommands": [
-                "set mem inaccessible-by-default off",
-                "set verbose on",
-                "add-symbol-file ${workspaceRoot}/build/hello-kocherga/hello-kocherga.elf"
-            ],
+            "runToEntryPoint": "main",
             // Work around for stopping at main on restart
             "postRestartCommands": [
                 "break main",
                 "continue"
-            ],
-            "liveWatch": {
-                "enabled": false,
-                "samplesPerSecond": 2
-            }
+            ]
+        },
+        {
+            "name": "BMP attach",
+            "cwd": "${workspaceRoot}",
+            "executable": "${command:cmake.launchTargetPath}",
+            "request": "attach",    // "launch" also works perhaps
+            "type": "cortex-debug",
+            "servertype": "bmp",
+            "interface": "swd",
+            "device": "RP2040",
+            "BMPGDBSerialPort": "/dev/cu.usbmodemC1CDAADC1",  // Use whatever serial port makes sense for your OS and BMP setup
+            "postLaunchCommands": [
+                "monitor reset halt",
+                "monitor tpwr enable",
+                "monitor swdp_scan",
+                "attach 1",
+            ]
+        },
+        {
+            "name": "BMP Debug",
+            "cwd": "${workspaceRoot}",
+            "executable": "${command:cmake.launchTargetPath}",
+            "request": "launch",
+            // "preLaunchTask": "Build STM",
+            "type": "cortex-debug",
+            "servertype": "bmp",
+            "interface": "swd",
+            "device": "RP2040",
+            "BMPGDBSerialPort": "/dev/cu.usbmodemC1CDAADC1",  // Use whatever serial port makes sense for your OS and BMP setup
+            "runToEntryPoint": "main",
+            "postLaunchCommands": [
+                "monitor reset halt",
+                "monitor tpwr enable",
+                "monitor swdp_scan",
+                "attach 1",
+                "load",
+                "r"
+            ]
         }
     ]
 }

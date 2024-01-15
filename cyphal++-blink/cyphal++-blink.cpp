@@ -47,8 +47,11 @@ using namespace uavcan::primitive::scalar;
  * CONSTANTS
  **************************************************************************************/
 
-static int const CAN2040_RX_PIN = 4;
-static int const CAN2040_TX_PIN = 5;
+static int const CAN2040_TX_PIN = 1;
+static int const CAN2040_RX_PIN = 2;
+static int const CAN_BITRATE = 1'000'000;
+static int const SPEED_CTRL = 3;
+
 static CanardPortID const BIT_PORT_ID = 1620U;
 
 /**************************************************************************************
@@ -122,7 +125,12 @@ int main()
       unique_id,
       "org.cwrubaja.pico.testboard", g_app_descriptor.image_crc);
 
-  crossCoreCanInit(1'000'000, CAN2040_RX_PIN, CAN2040_TX_PIN);
+  // Bring the CAN Speed Control pin to ground for high speed operation
+  gpio_init(SPEED_CTRL);
+  gpio_set_dir(SPEED_CTRL, GPIO_OUT);
+  gpio_put(SPEED_CTRL, 0);
+
+  crossCoreCanInit(CAN_BITRATE, CAN2040_RX_PIN, CAN2040_TX_PIN);
 
   // struct repeating_timer timer;
   // add_repeating_timer_ms(-250, repeating_timer_callback, NULL, &timer);
