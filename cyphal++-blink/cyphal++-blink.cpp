@@ -7,6 +7,9 @@
  *
  * switch built in LED off with
  *   yakut pub 1620:uavcan.primitive.scalar.Bit.1.0 'value: false'
+ *
+ * make LED blink with 1 Hz with
+ *  yakut pub 1620:uavcan.primitive.scalar.Bit.1.0 'value:
  */
 
 /**************************************************************************************
@@ -61,16 +64,6 @@ static CanardPortID const BIT_PORT_ID = 1620U;
 ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const &, cyphal::TransferMetadata const &);
 
 void onBit_1_0_Received(Bit_1_0 const &msg);
-
-void picoRestart()
-{
-  // Reset the watchdog timer
-  watchdog_enable(1, 0);
-  while (1)
-  {
-    tight_loop_contents(); // Literally a no-op, but the one the SDK uses
-  }
-}
 
 bool repeating_timer_callback(struct repeating_timer *t)
 {
@@ -157,8 +150,7 @@ int main()
 
     if (reboot)
     {
-      reboot = false;
-      picoRestart();
+      watchdog_reboot(0U, 0U, 0x7fffff);
     }
 
     static uint_fast64_t prev = 0;
@@ -179,7 +171,7 @@ int main()
       heartbeat_pub->publish(msg);
     }
 
-    __wfe();
+    // __wfe();
   }
 }
 
@@ -198,7 +190,9 @@ ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteComman
 
   std::string parameter;
 
-  if (req.command == uavcan::node::ExecuteCommand::Request_1_1::COMMAND_BEGIN_SOFTWARE_UPDATE)
+  switch (req.command)
+  {
+  case uavcan::node::ExecuteCommand::Request_1_1::COMMAND_BEGIN_SOFTWARE_UPDATE:
   {
     ArgumentsFromApplication args = {
         .args_from_app_version_major = 0,
@@ -210,19 +204,15 @@ ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteComman
 
     VolatileStorage<ArgumentsFromApplication> volatileStore(reinterpret_cast<std::uint8_t *>(ARGS_ADDR));
     volatileStore.store(args);
-
-    rsp.status = uavcan::node::ExecuteCommand::Response_1_1::STATUS_SUCCESS;
-
-    reboot = true;
   }
-  else if (req.command == uavcan::node::ExecuteCommand::Request_1_1::COMMAND_RESTART)
-  {
+  case uavcan::node::ExecuteCommand::Request_1_1::COMMAND_RESTART:
     rsp.status = uavcan::node::ExecuteCommand::Response_1_1::STATUS_SUCCESS;
     reboot = true;
-  }
-  else
-  {
+    break;
+  default:
     rsp.status = uavcan::node::ExecuteCommand_1_1::Response::STATUS_BAD_COMMAND;
+    break;
   }
+
   return rsp;
 }

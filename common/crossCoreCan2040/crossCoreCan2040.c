@@ -8,14 +8,14 @@
 #include <string.h>
 
 #include "hardware/irq.h"
+#include "hardware/sync.h"
 
 #include "pico/platform.h"
 #include "pico/stdlib.h"
-#include "hardware/sync.h"
 #include "pico/multicore.h"
+#include "pico/flash.h"
 
 #include <can2040.h>
-#include <canard.h>
 
 
 static struct can2040 cbus;
@@ -25,6 +25,7 @@ static uint32_t bitrate, gpio_rx, gpio_tx;
 struct can2040mailbox {
     uint8_t flags; // 0x01 - written, 0x02 - read
     struct can2040_msg msg;
+    uint64_t rx_stamp;
 };
 
 volatile struct can2040mailbox mailbox[CAN_MAILBOX_SIZE];
@@ -33,6 +34,8 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
 {
     if (notify == CAN2040_NOTIFY_RX) {
         const uint8_t num_mailboxes = sizeof(mailbox) / sizeof(struct can2040mailbox);
+
+        uint64_t rx_stamp = time_us_64();
 
         // Try to find a mailbox to put the msg in
         for (uint8_t mailbox_index = 0; mailbox_index < num_mailboxes; mailbox_index++) {
@@ -45,6 +48,7 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
                 // This flip flop flag system keeps only one of the two writing to the mailbox at a time.
                 struct can2040_msg * const m = (struct can2040_msg * const) &mailbox[mailbox_index].msg;
                 memcpy(m, msg, sizeof(struct can2040_msg));
+                mailbox[mailbox_index].rx_stamp = rx_stamp;
                 mailbox[mailbox_index].flags = 0x01;
 
                 __sev();
@@ -76,20 +80,22 @@ can2040Init(void)
     can2040_setup(&cbus, pio_num);
     can2040_callback_config(&cbus, can2040_cb);
 
-    // Enable irqs
+    // Enable IRQs
     const IRQn_Type pio_irq = pio_num ? PIO1_IRQ_0_IRQn : PIO0_IRQ_0_IRQn;
     irq_set_exclusive_handler(pio_irq, PIOx_IRQHandler);
     NVIC_SetPriority(pio_irq, 1);
     NVIC_EnableIRQ(pio_irq);
 
-    // Start canbus
+    // Start CAN BUS
     can2040_start(&cbus, sys_clock, bitrate, gpio_rx, gpio_tx);
 }
 
 void multicore_can2040Init(void) {
     can2040Init();
 
-    // Keep this core "busy" so it doesnt try to execute random memory
+    flash_safe_execute_core_init();
+
+    // Keep this core "busy" so it doesn't try to execute random memory
     while (1) {
         __wfe();
     }
@@ -141,6 +147,8 @@ int crossCoreCanReceive(CanardFrame * const outFrame)
             memcpy((void * restrict) outFrame->payload, m->data, len);
             outFrame->extended_can_id = m->id & ~(CAN2040_ID_RTR | CAN2040_ID_EFF);
             outFrame->payload_size = len;
+
+            // TODO: add stamp
 
             mailbox[mailbox_index].flags |= 0x02;
 

@@ -26,6 +26,7 @@ add_compile_options(-Wall
         )
 
 # Libraries and dependencies
+add_subdirectory(common)
 add_subdirectory(lib)
 
 # Select what app payload to ship with hello-kocherga.elf

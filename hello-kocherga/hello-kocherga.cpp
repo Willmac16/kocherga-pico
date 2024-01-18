@@ -434,18 +434,30 @@ void picoRestart()
 
   // Reset the watchdog timer
   watchdog_reboot(0U, 0U, 0x7fffff);
-  while (1)
-  {
-    tight_loop_contents(); // Literally a no-op, but the one the SDK uses
-  }
 }
 
 void app_start(void)
 {
-  __breakpoint();
   cleanUpKocherga();
 
   launch_kocherga_bin();
+}
+
+void handleFin(kocherga::Bootloader &boot, uint_fast64_t uptime)
+{
+  if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
+  {
+    if (*fin == kocherga::Final::BootApp)
+    {
+      app_start();
+    }
+    else if (*fin == kocherga::Final::Restart)
+    {
+      picoRestart();
+    }
+    // Restart or boot returned. This is bad
+    assert(false);
+  }
 }
 
 int main()
@@ -473,19 +485,7 @@ int main()
   if (!args)
   {
     const uint_fast64_t uptime = time_us_64();
-    if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
-    {
-      if (*fin == kocherga::Final::BootApp)
-      {
-        app_start();
-      }
-      else if (*fin == kocherga::Final::Restart)
-      {
-        picoRestart();
-      }
-      // Restart or boot returned. This is bad
-      assert(false);
-    }
+    handleFin(boot, uptime);
   }
 
   // // Add a Cyphal/serial node to the bootloader instance.
@@ -530,19 +530,7 @@ int main()
   while (true)
   {
     const uint_fast64_t uptime = time_us_64();
-    if (const auto fin = boot.poll(std::chrono::microseconds(uptime)))
-    {
-      if (*fin == kocherga::Final::BootApp)
-      {
-        app_start();
-      }
-      else if (*fin == kocherga::Final::Restart)
-      {
-        picoRestart();
-      }
-      // Restart or boot returned. This is bad
-      assert(false);
-    }
+    handleFin(boot, uptime);
 
     // Trigger the update process internally if the required arguments are provided by the application.
     // The trigger method cannot be called before the first poll().
@@ -558,6 +546,6 @@ int main()
     gpio_put(PICO_DEFAULT_LED_PIN, uptime & (1U << 20U));
 
     watchdog_update();
-    __wfe();
+    // __wfe();
   }
 }

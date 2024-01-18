@@ -27,6 +27,7 @@ target_link_libraries(cyphal++-blink
     pico_unique_id
     can2040
     cyphal++
+    crossCoreCan2040
 )
 
 target_include_directories(cyphal++-blink PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)
