@@ -194,7 +194,7 @@ SECTIONS
     } > SCRATCH_Y AT > FLASH
     __scratch_y_source__ = LOADADDR(.scratch_y);
 
-   .ram_vector_table (NOLOAD): {
+   .ram_vector_table (NOLOAD): ALIGN(256) {
         *(.ram_vector_table)
     } > RAM
 

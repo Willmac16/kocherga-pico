@@ -413,15 +413,16 @@ struct ArgumentsFromApplication
 
 static_assert(std::is_trivial_v<ArgumentsFromApplication>);
 
+// Wipe out anything the loader may accidentally be leaving behind for the app
 void cleanUpKocherga()
 {
-  // Wipe out anything the loader may accidentally be leaving behind for the app
+  // Disable Cross Core Can on Core 1
   multicore_reset_core1();
-
   extern uint32_t __StackOneBottom;
   uint32_t *stack_bottom = (uint32_t *)&__StackOneBottom;
   multicore_launch_core1_with_stack(multicore_can2040Stop, stack_bottom, PICO_CORE1_STACK_SIZE);
 
+  // Flush the XIP cache
   *((uint32_t *)XIP_CTRL_BASE) = 0x0000'0001U;
 
   return;
@@ -432,7 +433,7 @@ void picoRestart()
   cleanUpKocherga();
 
   // Reset the watchdog timer
-  watchdog_enable(0, 1);
+  watchdog_reboot(0U, 0U, 0x7fffff);
   while (1)
   {
     tight_loop_contents(); // Literally a no-op, but the one the SDK uses
@@ -555,6 +556,8 @@ int main()
     }
 
     gpio_put(PICO_DEFAULT_LED_PIN, uptime & (1U << 20U));
+
+    watchdog_update();
     __wfe();
   }
 }

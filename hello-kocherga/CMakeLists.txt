@@ -43,9 +43,19 @@ if(DEFINED HELLO_KOCHERGA_PAYLOAD)
 
   add_custom_command(TARGET hello-kocherga
       POST_BUILD
-      COMMAND python3 ${PROJECT_SOURCE_DIR}/elf_adder.py hello-kocherga.elf ../${HELLO_KOCHERGA_PAYLOAD}/${HELLO_KOCHERGA_PAYLOAD}.elf
-      DEPENDS ${PROJECT_SOURCE_DIR}/elf_adder.py
+      COMMAND ${PROJECT_SOURCE_DIR}/elf_adder.sh hello-kocherga.elf ../${HELLO_KOCHERGA_PAYLOAD}/${HELLO_KOCHERGA_PAYLOAD}.elf
+      DEPENDS ${PROJECT_SOURCE_DIR}/elf_adder.sh
       DEPENDS ${HELLO_KOCHERGA_PAYLOAD}.elf
+      COMMENT "Adding payload to hello-kocherga.elf"
       VERBATIM
       )
+
+  # add_custom_command(TARGET hello-kocherga
+  #     POST_BUILD
+  #     COMMAND python3 ${PROJECT_SOURCE_DIR}/elf_adder.py hello-kocherga.elf ../${HELLO_KOCHERGA_PAYLOAD}/${HELLO_KOCHERGA_PAYLOAD}.elf
+  #     DEPENDS ${PROJECT_SOURCE_DIR}/elf_adder.py
+  #     DEPENDS ${HELLO_KOCHERGA_PAYLOAD}.elf
+  #     COMMENT "Adding payload to hello-kocherga.elf"
+  #     VERBATIM
+  #     )
 endif()
