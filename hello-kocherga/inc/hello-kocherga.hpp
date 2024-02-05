@@ -1,7 +1,11 @@
-#define PICO_USE_STACK_GUARDS 1
-#define PICO_STACK_SIZE _u(0x10000)
-#define PICO_CORE1_STACK_SIZE _u(0x1000)
+#include "hello-kocherga-defines.hpp"
 
-#define CAN_MAILBOX_SIZE 64U
+static int const CAN_BITRATE = 1'000'000;
 
-#define APP_OFFSET 0x00020000
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+void *o1malloc(const size_t amount);
+
+void o1free(void *const pointer);

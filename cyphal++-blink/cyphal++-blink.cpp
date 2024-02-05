@@ -8,8 +8,8 @@
  * switch built in LED off with
  *   yakut pub 1620:uavcan.primitive.scalar.Bit.1.0 'value: false'
  *
- * make LED blink with 1 Hz with
- *  yakut pub 1620:uavcan.primitive.scalar.Bit.1.0 'value:
+ * make LED blink at 0.125 Hz with
+ *  yakut pub 1620:uavcan.primitive.scalar.Bit.1.0 'value: !$ "n % 2"' -T 4
  */
 
 /**************************************************************************************
@@ -26,6 +26,13 @@ extern "C"
 #include "crossCoreCan2040.h"
 }
 
+#define PICO_USE_STACK_GUARDS 1
+
+#define PICO_STACK_SIZE _u(0x10000)
+#define PICO_CORE1_STACK_SIZE _u(0x1000)
+
+#define PICO_USE_MALLOC_MUTEX 0
+
 #include "RP2040.h"
 
 #include <stdlib.h>
@@ -35,6 +42,7 @@ extern "C"
 #include "hardware/sync.h"
 #include "hardware/flash.h"
 #include "hardware/irq.h"
+#include "hardware/exception.h"
 
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
@@ -50,9 +58,11 @@ using namespace uavcan::primitive::scalar;
  * CONSTANTS
  **************************************************************************************/
 
+static int const MEGA = 1'000'000;
+
 static int const CAN2040_TX_PIN = 1;
 static int const CAN2040_RX_PIN = 2;
-static int const CAN_BITRATE = 1'000'000;
+static int const CAN_BITRATE = MEGA;
 static int const SPEED_CTRL = 3;
 
 static CanardPortID const BIT_PORT_ID = 1620U;
@@ -64,12 +74,6 @@ static CanardPortID const BIT_PORT_ID = 1620U;
 ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteCommand::Request_1_1 const &, cyphal::TransferMetadata const &);
 
 void onBit_1_0_Received(Bit_1_0 const &msg);
-
-bool repeating_timer_callback(struct repeating_timer *t)
-{
-  watchdog_update();
-  return true;
-}
 
 /**************************************************************************************
  * GLOBAL VARIABLES
@@ -91,7 +95,17 @@ cyphal::ServiceServer execute_command_srv = node_hdl.create_service_server<Execu
     2 * 1000 * 1000UL,
     onExecuteCommand_1_1_Request_Received);
 
-/******************************************5********************************************
+void ex_handler_hard_fault(void)
+{
+  // Shut off the CAN transceiver with the standby/speed control pin
+  gpio_put(SPEED_CTRL, 1);
+  gpio_deinit(CAN2040_RX_PIN);
+  gpio_deinit(CAN2040_TX_PIN);
+
+  watchdog_reboot(0U, 0U, 0x7fffff);
+}
+
+/**************************************************************************************
  * MAIN
  **************************************************************************************/
 
@@ -123,12 +137,12 @@ int main()
   gpio_set_dir(SPEED_CTRL, GPIO_OUT);
   gpio_put(SPEED_CTRL, 0);
 
+  // Register the CAN Shutdown handler
+  exception_set_exclusive_handler(HARDFAULT_EXCEPTION, ex_handler_hard_fault);
+
   crossCoreCanInit(CAN_BITRATE, CAN2040_RX_PIN, CAN2040_TX_PIN);
 
-  // struct repeating_timer timer;
-  // add_repeating_timer_ms(-250, repeating_timer_callback, NULL, &timer);
-
-  // watchdog_enable(500, 0);
+  // watchdog_enable(500, 1);
 
   while (true)
   {
@@ -150,28 +164,40 @@ int main()
 
     if (reboot)
     {
+      gpio_put(SPEED_CTRL, 1);
+      gpio_deinit(CAN2040_RX_PIN);
+      gpio_deinit(CAN2040_TX_PIN);
+
       watchdog_reboot(0U, 0U, 0x7fffff);
+
+      while (1)
+      {
+        tight_loop_contents();
+      }
     }
 
     static uint_fast64_t prev = 0;
     uint_fast64_t now = time_us_64();
 
     /* Publish the heartbeat once/second */
-    if (now - prev > 1'000'000)
+    if (now - prev > MEGA)
     {
       prev = now;
 
       uavcan::node::Heartbeat_1_0 msg;
 
-      msg.uptime = now / 1'000'000UL;
+      msg.uptime = now / MEGA;
       msg.health.value = uavcan::node::Health_1_0::NOMINAL;
       msg.mode.value = uavcan::node::Mode_1_0::OPERATIONAL;
-      msg.vendor_specific_status_code = 0;
+      msg.vendor_specific_status_code = gpio_get(PICO_DEFAULT_LED_PIN);
 
       heartbeat_pub->publish(msg);
     }
 
-    // __wfe();
+    watchdog_update();
+
+    absolute_time_t deadline = make_timeout_time_us(100);
+    best_effort_wfe_or_timeout(deadline);
   }
 }
 
@@ -208,6 +234,10 @@ ExecuteCommand::Response_1_1 onExecuteCommand_1_1_Request_Received(ExecuteComman
   case uavcan::node::ExecuteCommand::Request_1_1::COMMAND_RESTART:
     rsp.status = uavcan::node::ExecuteCommand::Response_1_1::STATUS_SUCCESS;
     reboot = true;
+    break;
+
+  case uavcan::node::ExecuteCommand::Request_1_1::COMMAND_STORE_PERSISTENT_STATES:
+    rsp.status = uavcan::node::ExecuteCommand::Response_1_1::STATUS_SUCCESS;
     break;
   default:
     rsp.status = uavcan::node::ExecuteCommand_1_1::Response::STATUS_BAD_COMMAND;

@@ -2,7 +2,7 @@
 .cpu cortex-m0plus
 .thumb
 
-#include "hello-kocherga.hpp"
+#include "hello-kocherga-defines.hpp"
 #include "pico/asm_helper.S"
 #include "hardware/regs/m0plus.h"
 

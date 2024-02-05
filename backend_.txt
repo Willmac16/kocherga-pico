@@ -1,0 +1,38 @@
+backend_ ops
+
+AppLocator:
+read:       in identifyApplication
+read:       in validateImageCRC     called by identifyApplication (twice; once to find CRC & once to compute CRC)
+
+
+Bootloader:
+endWrite:   in reset                if AppUpdateInProgress
+endWrite:   in beginUpdate          if AppUpdateInProgress
+beginWrite: in beginUpdate          unqualified, follows
+write:      in handleFileReadResult if response
+
+-----------------------------------------------
+
+Overall Flow
+
+endWrite:   in reset                if AppUpdateInProgress
+AppLocator
+
+endWrite:   in beginUpdate          if AppUpdateInProgress
+beginWrite: in beginUpdate          unqualified, follows
+write:      in handleFileReadResult if response
+
+-----------------------------------------------
+
+Conclusions
+
+As the names would suggest, write operations will be bookended by beginWrite and endWrite.
+Therefore, coherence between write and read can be achieved through cleaning up work in endWrite.
+
+read should stay the same
+
+write should place into some sort of queue/mailbox
+simple solution would be to copy the cross core can implementation with flash sectors
+
+endWrite would empty and write all remaining sectors
+

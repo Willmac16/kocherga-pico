@@ -22,6 +22,7 @@ target_link_libraries(cyphal++-blink
     hardware_watchdog
     hardware_flash
     hardware_irq
+    hardware_exception
     pico_stdlib
     pico_multicore
     pico_unique_id
@@ -39,13 +40,18 @@ find_package(kocherga REQUIRED)
 generate_kocherga_image(cyphal++-blink.elf org.cwrubaja.pico.testboard)
 add_custom_target(cyphal++-blink.elf ALL DEPENDS cyphal++-blink)
 
+add_custom_command(TARGET cyphal++-blink PRE_BUILD
+  COMMAND rm -f *.app.bin
+)
+
 # Move the output .app.bin file to app_images directory
 set(APP_IMAGES_DIR ${PROJECT_BINARY_DIR}/app_images)
 
 
-add_custom_target(copy_app_bin_files ALL DEPENDS cyphal++-blink)
+add_custom_target(copy_app_bin_files ALL DEPENDS org.cwrubaja.pico.testboard.app.bin)
 add_custom_command(TARGET copy_app_bin_files POST_BUILD
   COMMAND mkdir -p ${APP_IMAGES_DIR}
+  COMMAND rm -f ${APP_IMAGES_DIR}/*.app.bin
   COMMAND cp *.app.bin ${APP_IMAGES_DIR}
   COMMENT "Copying cyphal++-blink.app.bin to ${APP_IMAGES_DIR}"
 )

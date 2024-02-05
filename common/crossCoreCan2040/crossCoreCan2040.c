@@ -88,12 +88,14 @@ can2040Init(void)
 
     // Start CAN BUS
     can2040_start(&cbus, sys_clock, bitrate, gpio_rx, gpio_tx);
+
+    return;
 }
 
 void multicore_can2040Init(void) {
     can2040Init();
 
-    flash_safe_execute_core_init();
+    // flash_safe_execute_core_init();
 
     // Keep this core "busy" so it doesn't try to execute random memory
     while (1) {

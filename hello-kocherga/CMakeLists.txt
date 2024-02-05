@@ -4,6 +4,8 @@ set(SC_VERSION_PATCH 0)
 
 add_executable(hello-kocherga
         hello-kocherga.cpp
+        can2040Driver.cpp
+        crossCoreFlashDriver.cpp
         launch_kocherga_bin.S
         )
 
@@ -13,6 +15,7 @@ target_link_libraries(hello-kocherga
         hardware_flash
         hardware_sync
         hardware_watchdog
+        hardware_exception
         pico_stdlib
         pico_platform
         pico_rand
